@@ -61,7 +61,11 @@ export default class MIXFile {
     addLocalMixDatabase() {
         const fileName = 'local mix database.dat';
 
-        const fileList = Array.from(this.includedFilesID.values()).map((el) => el.fileName);
+        // Lowercase the names: the XCC database convention is lowercase
+        // filenames, and the legacy packers normalized this way too
+        // (e.g. BuildMixes.ps1 ToLowerInvariant). Member IDs are already
+        // case-insensitive, so this only affects the name list itself.
+        const fileList = Array.from(this.includedFilesID.values()).map((el) => el.fileName.toLowerCase());
         fileList.push(fileName);
         fileList.sort();
 

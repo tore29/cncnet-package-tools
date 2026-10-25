@@ -1,5 +1,8 @@
 import { parseArgs } from 'util';
 import * as fsPromises from 'fs/promises';
+import * as path from 'path';
+
+import { loadGameProfile, resolveGamePackageDir } from 'cncnet-core/service/game-profile.service';
 
 import { parse as parseIni, stringify } from 'js-ini';
 import type { IIniObject, IIniObjectSection } from 'js-ini';
@@ -30,6 +33,10 @@ export class MpMapsUpdaterService {
     public static run(): void {
         const { values } = parseArgs({
             options: {
+                game: {
+                    type: 'string',
+                    short: 'g',
+                },
                 workingDir: {
                     type: 'string',
                     short: 'w',
@@ -37,13 +44,20 @@ export class MpMapsUpdaterService {
             },
         });
 
-        if (!values.workingDir) {
-            console.error('Missing required argument: --workingDir');
+        if (!values.game && !values.workingDir) {
+            console.error('Missing required argument: --game or --workingDir');
+            console.error('Example: npm run mpmaps-updater -- --game yr');
             console.error('Example: npm run mpmaps-updater -- --workingDir /path/to/package');
             process.exit(1);
         }
 
-        new MpMapsUpdaterService(values.workingDir).run().catch(console.error);
+        // --game: workingDir comes from the game profile's packageDir.
+        // An explicit --workingDir still wins.
+        const workingDir = values.game
+            ? resolveGamePackageDir(loadGameProfile(values.game), values.workingDir)
+            : path.resolve(values.workingDir!);
+
+        new MpMapsUpdaterService(workingDir).run().catch(console.error);
     }
 
     /**

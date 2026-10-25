@@ -1,0 +1,72 @@
+{
+    "id": "yr",
+    "app": {
+        "name": "CnCNet Yuri's Revenge",
+        "description": "Modern way of playing Yuri's Revenge",
+        "appId": "D22A250A-085F-415E-959E-8DB49F4E4CCA",
+        "publisher": "cncnet.org",
+        "publisherUrl": "https://cncnet.org",
+        "supportUrl": "https://cncnet.org",
+        "updatesUrl": "https://cncnet.org"
+    },
+    "version": {
+        "file": "version",
+        "section": "DTA",
+        "key": "Version",
+        "missing": "undefined"
+    },
+    "packageKind": "patch",
+    "packageDir": "../package",
+    "resources": {
+        "icon": "cncnet5.ico",
+        "license": "License-YurisRevenge.txt"
+    },
+    "output": {
+        "baseFilename": "CnCNet5_YR_Installer",
+        "dir": ".."
+    },
+    "excludedFiles": [
+        "preupdateexec",
+        "updateexec",
+        "versionconfig.ini",
+        "RA2MD.INI"
+    ],
+    "requiredFiles": {
+        "package": [
+            "version",
+            "preupdateexec",
+            "updateexec"
+        ],
+        "inno": [
+            "libs/InnoDependencyInstaller/CodeDependencies.iss",
+            "libs/ISTheme/ISTheme.iss",
+            "libs/CncnetCommon/CncnetCommon.iss",
+            "Resources/cncnet5.ico",
+            "Resources/License-YurisRevenge.txt",
+            "Resources/yr/YurisRevengeWizardFormBackground.bmp",
+            "Resources/yr/YurisRevengeInnerPageBackground.bmp",
+            "Resources/yr/YurisRevengePageBackground.bmp",
+            "Resources/WritePermissionTestFile.txt",
+            "bin/ISCC.exe",
+            "templates/yr/installer.template.iss"
+        ]
+    },
+    "installDelete": {
+        "parser": "js-ini",
+        "sections": [
+            "Delete",
+            "DeleteFolder"
+        ],
+        "sentinel": "do_not_remove_this_line",
+        "dedupe": false,
+        "sort": true,
+        "filterExisting": "noop-warn"
+    },
+    "mixes": {
+        "inDir": "../game-assets",
+        "outDir": ".",
+        "nameFormat": "padded-crc32",
+        "xccGameId": 5,
+        "buildInService": false
+    }
+}

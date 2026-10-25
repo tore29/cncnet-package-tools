@@ -1,0 +1,227 @@
+# Reusable installer-build workflow for the CnCNet game client packages.
+#
+# Centralized in the tools repo (maintainer's call: one shared installer CI for all games).
+# Each game repo (ts, yr, ra, td) calls this from its own deployment workflow via:
+#
+#   uses: CnCNet/cncnet-package-tools/.github/workflows/build-installer.yml@<ref>
+#   with:
+#     game: ts
+#     packageDir: .            # YR/RA1: "package"
+#
+# and then keeps its EXISTING deploy job (SCP upload, live-mirror flip, Linux
+# tar.gz re-pack, public installer upload) — the SSH_* secrets live in the game
+# repos, as today. This workflow is BUILD-ONLY: it produces the `package`
+# (tar.gz) and `installer` (exe) workflow artifacts (+ GitHub release assets on a
+# published release) for the caller's deploy job to consume.
+#
+# Version: MIRRORS YR's functional GH Actions build system (user decision). The
+# version is the GitVersion SemVer (from the game repo's git tags + its
+# GitVersion.yml), stamped into versionconfig.ini (line 2, literal;
+# ApplyTimestampOnVersion disabled), then `version-writer` (VersionWriter.exe)
+# emits the `version` file that build-installer REQUIRES (it reads `[DTA] Version`).
+# Each game repo carries its own GitVersion.yml (YR: tag-prefix 'yr-'; TS: 'ts-')
+# + git tags — the TS GitVersion.yml + tags are TS-cutover items (HELD).
+
+name: build-installer
+
+on:
+  workflow_call:
+    inputs:
+      game:
+        description: 'Game id: td | ra1 | ts | yr'
+        required: true
+        type: string
+      packageDir:
+        description: 'Client package dir, relative to the game-repo root (e.g. "package" for YR/RA1, "." for TS)'
+        required: true
+        type: string
+      buildMixes:
+        description: 'Run mix-packer before building the installer'
+        required: false
+        type: boolean
+        default: true
+      nodeVersion:
+        description: 'Node.js major version'
+        required: false
+        type: string
+        default: '24'
+
+jobs:
+  build:
+    name: Build package + installer (${{ inputs.game }})
+    runs-on: windows-2022
+    environment: cncnet
+    # Serialize builds for the same game+ref (avoid two runs racing on the same
+    # package dir / installer-output). Job-level so `inputs` is always in scope.
+    concurrency:
+      group: ${{ github.workflow }}-${{ inputs.game }}-${{ github.ref }}
+      cancel-in-progress: false
+    outputs:
+      # GitVersion SemVer — for the caller's asset naming / deploy versioning.
+      packageVersion: ${{ env.GitVersion_SemVer }}
+      baseFilename: ${{ steps.resolve.outputs.baseFilename }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive # pulls tools/ + the nested InnoDependencyInstaller
+          fetch-depth: 0 # required for GitVersion
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.nodeVersion }}
+
+      - name: Restore Tools NPM Libs from Cache
+        id: npm-cache
+        uses: actions/cache@v4
+        with:
+          path: tools/node_modules
+          key: ${{ runner.os }}-node-tools-prod-${{ hashFiles('tools/package-lock.json', 'tools/package.json') }}
+          restore-keys: ${{ runner.os }}-node-tools-prod-
+
+      - name: Install Tools NPM Libs
+        if: steps.npm-cache.outputs.cache-hit != 'true'
+        working-directory: tools
+        run: npm ci --omit=dev
+
+      # ---------------------------------------------------------------------------
+      # VERSION — GitVersion SemVer (mirrors YR's functional CI).
+      # ---------------------------------------------------------------------------
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v0.9.15
+        with:
+          versionSpec: "5.x"
+
+      - name: Run GitVersion
+        uses: gittools/actions/gitversion/execute@v0.9.15
+
+      # Stamp the SemVer into versionconfig.ini line 2 (literal) and disable
+      # timestamp mode, so version-writer emits exactly this version. (Setting
+      # ApplyTimestampOnVersion=no is a no-op for YR/RA1, whose config leaves it
+      # unset; required for TS, whose committed config sets it to yes.)
+      - name: Stamp version into versionconfig.ini
+        shell: pwsh
+        run: |
+          $cfg = Join-Path '.' '${{ inputs.packageDir }}/versionconfig.ini'
+          $lines = Get-Content -LiteralPath $cfg
+          if ($lines.Count -lt 2) { throw "versionconfig.ini too short: $cfg" }
+          $lines[1] = '${{ env.GitVersion_SemVer }}'
+          $lines = $lines -replace 'ApplyTimestampOnVersion=yes', 'ApplyTimestampOnVersion=no'
+          Set-Content -LiteralPath $cfg -Value $lines
+          Write-Host "Stamped versionconfig.ini line 2 = '${{ env.GitVersion_SemVer }}'"
+
+      # Mixes first: version-writer (FileVersions) and build-installer both expect
+      # the packed MIX/ to be present.
+      - name: Pack Game Assets (mix-packer)
+        if: inputs.buildMixes
+        working-directory: tools
+        run: npm run mix-packer -- --game ${{ inputs.game }}
+
+      - name: Version Writer
+        working-directory: tools
+        run: npm run version-writer -- --game ${{ inputs.game }}
+
+      # ---------------------------------------------------------------------------
+      # INSTALLER — build-installer reads the `version` file + bundles the package.
+      # (Fails here if version-writer did not produce the `version` file.)
+      # ---------------------------------------------------------------------------
+      - name: Build Installer
+        working-directory: tools
+        run: npm run build-installer -- --game ${{ inputs.game }}
+
+      # ---------------------------------------------------------------------------
+      # LOCATE OUTPUTS — the tools place the installer at
+      # <packageDir>/<output.dir>/<baseFilename>.exe (output.dir/baseFilename come
+      # from the tools-repo profile). Resolve the base filename, locate the produced
+      # installer, and copy it to the repo root for clean artifact/upload naming.
+      # ---------------------------------------------------------------------------
+      - name: Resolve installer path
+        id: resolve
+        shell: pwsh
+        run: |
+          $profile = Get-Content "tools/games/${{ inputs.game }}.json" -Raw | ConvertFrom-Json
+          $base = $profile.output.baseFilename
+          "baseFilename=$base" >> $env:GITHUB_OUTPUT
+          $hit = Get-ChildItem -Path '.' -Recurse -Filter "$base.exe" -ErrorAction SilentlyContinue |
+                 Where-Object { $_.FullName -notmatch 'node_modules' } |
+                 Select-Object -First 1
+          if (-not $hit) { throw "Installer '$base.exe' not found after build" }
+          Write-Host "Found installer: $($hit.FullName)"
+          Copy-Item -LiteralPath $hit.FullName -Destination (Join-Path (Get-Location) "$base.exe") -Force
+
+      # ---------------------------------------------------------------------------
+      # PACKAGE ARCHIVES — for deploy (server) + Linux download.
+      # Exclude dev-only content: the package dir is the repo root for TS (so dev
+      # dirs like tools/MixSource/.git must be excluded) but a clean "package" dir
+      # for YR/RA1. The exclude set = the profile's excludedFiles (backslash→slash)
+      # plus a few essentials. (Patterns verified on a real run.)
+      # ---------------------------------------------------------------------------
+      - name: Create package artifact (tar.gz)
+        shell: pwsh
+        run: |
+          $profile = Get-Content "tools/games/${{ inputs.game }}.json" -Raw | ConvertFrom-Json
+          $excludes = @()
+          foreach ($e in $profile.excludedFiles) {
+            $p = ([string]$e).Trim() -replace '\\', '/'
+            if ($p) { $excludes += $p }
+          }
+          $excludes += @('tools', 'installer-output', '.git', '.github', 'node_modules')
+          $excludes = @($excludes | Select-Object -Unique)
+          $args = @('-C', '${{ inputs.packageDir }}', '-czf', 'package.tar.gz', '--no-anchored')
+          foreach ($x in $excludes) { $args += @('--exclude', $x) }
+          $args += '.'
+          Write-Host "tar @args"
+          & tar @args
+
+      - name: Create package artifact (zip)
+        shell: pwsh
+        run: |
+          $profile = Get-Content "tools/games/${{ inputs.game }}.json" -Raw | ConvertFrom-Json
+          $excludes = @()
+          foreach ($e in $profile.excludedFiles) {
+            $p = ([string]$e).Trim() -replace '\\', '/'
+            if ($p) { $excludes += $p }
+          }
+          $excludes += @('tools', 'installer-output', '.git', '.github', 'node_modules')
+          $excludes = @($excludes | Select-Object -Unique)
+          $args = @('a', 'package.zip', "./${{ inputs.packageDir }}/")
+          foreach ($x in $excludes) { $args += "-x!$x" } # 7z wildcard exclude
+          & 7z.exe @args
+
+      # ---------------------------------------------------------------------------
+      # ARTIFACTS — for the caller's deploy job.
+      # ---------------------------------------------------------------------------
+      - name: Upload Package Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: ./package.tar.gz
+          if-no-files-found: error
+
+      - name: Upload Installer Workflow Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer
+          path: ./${{ steps.resolve.outputs.baseFilename }}.exe
+          if-no-files-found: error
+
+      # ---------------------------------------------------------------------------
+      # RELEASE ASSETS — published releases only (the caller's deploy job is what
+      # gates stable-channel promotion; here we simply attach to the release).
+      # ---------------------------------------------------------------------------
+      - name: Upload Package Release Asset (tar.gz)
+        if: github.event_name == 'release' && github.event.action == 'published'
+        working-directory: tools
+        run: npm run release-asset-uploader -- --token ${{ secrets.GITHUB_TOKEN }} --assetName "package_${{ env.GitVersion_SemVer }} (tar.gz)" --assetPath ${{ github.workspace }}/package.tar.gz
+
+      - name: Upload Package Release Asset (zip)
+        if: github.event_name == 'release' && github.event.action == 'published'
+        working-directory: tools
+        run: npm run release-asset-uploader -- --token ${{ secrets.GITHUB_TOKEN }} --assetName "package_${{ env.GitVersion_SemVer }} (zip)" --assetPath ${{ github.workspace }}/package.zip
+
+      - name: Upload Installer Release Asset
+        if: github.event_name == 'release' && github.event.action == 'published'
+        working-directory: tools
+        run: npm run release-asset-uploader -- --token ${{ secrets.GITHUB_TOKEN }} --assetName "${{ steps.resolve.outputs.baseFilename }}_${{ env.GitVersion_SemVer }} (exe)" --assetPath ${{ github.workspace }}/${{ steps.resolve.outputs.baseFilename }}.exe

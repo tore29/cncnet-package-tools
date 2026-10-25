@@ -8,6 +8,7 @@
     "start": "tsx index.ts"
   },
   "dependencies": {
+    "cncnet-core": "1.0.0",
     "tsx": "^4.21.0",
     "fast-folder-size": "^2.4.0",
     "fs-extra": "^11.3.4",

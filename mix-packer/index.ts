@@ -1,6 +1,8 @@
 import { parseArgs } from 'util';
 import * as path from 'path';
 
+import { loadGameProfile, resolveGamePackageDir } from 'cncnet-core/service/game-profile.service';
+
 import ExFS from './ExFS';
 import MIXFile from './MIXFile';
 import type { NameFormat } from './NameFormat';
@@ -8,6 +10,10 @@ import type { NameFormat } from './NameFormat';
 function getOptions() {
     const { values } = parseArgs({
         options: {
+            game: {
+                type: 'string',
+                short: 'g',
+            },
             inDir: {
                 type: 'string',
                 short: 'i',
@@ -31,18 +37,33 @@ function getOptions() {
         },
     });
 
-    if (!values.inDir || !values.outDir) {
-        console.error('Missing required arguments: --inDir and --outDir');
+    let inDir = values.inDir ? path.resolve(values.inDir) : undefined;
+    let outDir = values.outDir ? path.resolve(values.outDir) : undefined;
+    let xccGameId = parseXccGameId(values.xccGameId);
+    let nameFormat = parseNameFormat(values.nameFormat);
+
+    if (values.game) {
+        // --game: mix pins (inDir/outDir/nameFormat/xccGameId) come from the
+        // game profile, resolved against the package dir. Explicit
+        // --inDir/--outDir still win over the profile defaults.
+        const profile = loadGameProfile(values.game);
+        const packageDir = resolveGamePackageDir(profile);
+        inDir = inDir ?? path.resolve(packageDir, profile.mixes.inDir);
+        outDir = outDir ?? path.resolve(packageDir, profile.mixes.outDir);
+        xccGameId = profile.mixes.xccGameId;
+        nameFormat = profile.mixes.nameFormat;
+    }
+
+    if (!inDir || !outDir) {
+        console.error('Missing required arguments: --inDir and --outDir (or --game)');
         console.error('Example: npm run mix-packer -- --inDir /path/to/game-assets --outDir /path/to/package');
+        console.error('Example: npm run mix-packer -- --game yr');
         process.exit(1);
     }
 
-    const xccGameId = parseXccGameId(values.xccGameId);
-    const nameFormat = parseNameFormat(values.nameFormat);
-
     return {
-        inDir: path.resolve(values.inDir),
-        outDir: path.resolve(values.outDir),
+        inDir,
+        outDir,
         xccGameId,
         nameFormat,
         includeLmd: !values['no-lmd'],
@@ -76,6 +97,16 @@ function main() {
 
     ExFS.deleteAllMix(inDir);
     const packArray = ExFS.GetPackArray(inDir);
+
+    if (packArray.length === 0) {
+        // Refuse to no-op: packing zero mixes means a wrong --inDir or a
+        // MixSource that still uses the legacy '*.mix' folder names (the
+        // packer only reads '*.pack'). Either way an empty result would let
+        // build-installer ship an installer with no game assets.
+        console.error(`No '*.pack' entries found in '${inDir}'. Aborting - nothing was packed.`);
+        console.error('Expected folders like MixSource/<name>.pack.');
+        process.exit(1);
+    }
 
     for (const item of packArray) {
         const parse = path.parse(item);
