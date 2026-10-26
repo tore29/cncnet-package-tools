@@ -1,35 +1,18 @@
 ; =============================================================================
-; CnCNet Tiberian Sun client installer
-;
-; Install scope: per-user by default (no elevation needed). At startup the
-; user can opt into an all-users install (UAC prompt). The machine-wide
-; dependency installers only run for all-users (elevated) installs.
-;
-; Shared functionality (admin/wine detection, Steam install lookup,
-; write-permission test, per-user deps + elevation relaunch, the generic
-; download page) lives in libs/CncnetCommon/CncnetCommon.iss and is
-; #include'd below; this template keeps the TS-specific policy code.
-;
-; This is the source template. The build renders it to installer.iss (Twig,
-; "npm run build-installer") - edit this file, never the generated output.
+; CnCNet Tiberian Sun client installer (Inno Setup 7).
+; Per-user install by default; all-users can be opted into at startup (UAC).
+; Machine-wide dependencies only run for the elevated (all-users) install.
+; Source template: the build renders this to installer.iss (Twig) - edit this file, never the output.
 ; =============================================================================
 
 #define public Dependency_NoExampleSetup
-; Dependency_CustomExecute hook: runs dependency installers from Inno's temp
-; directory instead of the installer's launch directory (the library's
-; default). The DirectX web setup in particular creates a "$tmp" subfolder
-; in its working directory to extract its redistributables into, which would
-; otherwise be left behind in the folder the user launched the installer
-; from. Inno's temp directory is deleted automatically when the install
-; finishes. The value must be a quoted preprocessor string (an unquoted
-; identifier would be evaluated as a reference to another preprocessor
-; constant).
+; Dependency_CustomExecute hook: run dependency installers from Inno's temp directory (the library's
+; default is the launch directory, where the DirectX web setup would leave a "$tmp" subfolder behind).
+; The value must be a quoted preprocessor string (an unquoted identifier is evaluated as a constant reference).
 #define public Dependency_CustomExecute 'Dependency_RunWithTempWorkingDir'
 
 [Code]
-// Dependency_CustomExecute hook implementation (declared before the library's
-// Dependency_Install below, which calls it; Inno's Pascal script is
-// order-sensitive, so the implementation lives in this preamble).
+// Dependency_CustomExecute hook implementation; must precede the library's Dependency_Install (order-sensitive Pascal).
 function Dependency_RunWithTempWorkingDir(const FilePath, Parameters: String; var ResultCode: Integer): Boolean;
 begin
   Result := ShellExec('', FilePath, Parameters, ExpandConstant('{tmp}'), SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode);
@@ -86,25 +69,14 @@ LicenseFile={{ licenseFile }}
 ArchitecturesInstallIn64BitMode=x64compatible
 UsedUserAreasWarning=no
 SetupLogging=yes
-; Per-user (current user) install by default: no elevation is needed, and
-; non-administrators can install without any extra step. At startup the
-; user is offered the chance to install for all users instead (UAC prompt);
-; "dialog commandline" also allows /ALL and /LOW command line overrides for
-; scripted installs.
-;
-; All-users installs go to the legacy C:\Westwood\ts-client location with
-; common Start Menu / public desktop shortcuts. Per-user installs go to
-; %LocalAppData%\Programs with per-user shortcuts (unless a previous client
-; install is at the legacy location, see GetDefaultDir).
-;
-; The .NET / VC++ / DirectX dependency installers are machine-wide and
-; require elevation, so they only run for all-users (elevated) installs -
-; see InitializeSetup below.
+; Per-user by default (no elevation needed); at startup the user is offered an all-users install
+; (UAC); "commandline" also allows /ALL and /LOW overrides for scripted installs.
+; All-users installs go to C:\Westwood\ts-client (common Start Menu / public desktop);
+; per-user installs go to %LocalAppData%\Programs (unless upgrading in place, see GetDefaultDir).
+; The .NET / VC++ / DirectX dependency installers are machine-wide and only run for elevated installs.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
-; ArchiveExtraction must be "full" (the default) because the [Files] section
-; uses the extractarchive flag for the restored-movies archive. "basic" would
-; be smaller but does not support extraction at install time.
+; ArchiveExtraction must be "full" (the default): the extractarchive flag (restored-movies archive) is not supported by "basic".
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -116,8 +88,7 @@ Name: "Installmov"; Description: "Download and install movies (1.4 GB)"; GroupDe
 {% for file in installDeleteFiles %}
 Type: filesandordirs; Name: "{app}\{{ file }}"
 {% endfor %}
-; Leftover extraction folder of the DirectX web setup from older versions of
-; this installer (it used to create "$tmp" in the app directory)
+; Leftover DirectX web-setup "$tmp" folder from older versions of this installer
 Type: filesandordirs; Name: "{app}\$tmp"
 
 [Files]
@@ -127,43 +98,34 @@ Source: "Resources\ts\TiberianSunInnerPageBackground.bmp"; DestName: "InnerPageB
 Source: "Resources\ts\TiberianSunPageBackground.bmp"; DestName: "PageBackground.bmp"; Flags: dontcopy
 Source: "Resources\WritePermissionTestFile.txt"; Flags: dontcopy
 
-; Main client package (referenced by absolute path; critical files are also
-; listed explicitly below so the compile fails if any of them is missing)
+; Main client package; critical files are also listed explicitly (compile fails if any is missing).
 Source: "{{ sourceDir }}\*"; DestDir: "{app}"; Excludes: "{{ excludedInstallerFiles | join(',') }}"; Flags: recursesubdirs ignoreversion overwritereadonly sortfilesbyextension
 Source: "{{ sourceDir }}\version"; DestDir: "{app}";
 Source: "{{ sourceDir }}\TiberianSun.exe"; DestDir: "{app}";
 Source: "{{ sourceDir }}\game.exe"; DestDir: "{app}";
-; Tiberian Sun Movies (no existing install in use): downloaded to the temp
-; directory in the "Preparing to install" step (see prepareToInstall below,
-; on a download page with a real per-file progress bar), then installed from
-; there.
+; Tiberian Sun Movies (no existing install in use): downloaded to the temp dir in the
+; "Preparing to install" step (download page with a per-file progress bar), then installed from there.
 {% for movie in movies %}
 Source: "{tmp}\{{ movie.file }}"; DestDir: "{app}\MIX"; DestName: "{{ movie.file }}"; Check: DownloadFullMovies; Flags: external skipifsourcedoesntexist ignoreversion
 {% endfor %}
 
-; Movies copied from a detected existing TS install (plain file copy - the
-; movies of an existing install are already in their final, usable form, so
-; no decryption step is needed). The source install is left untouched.
+; Movies copied from a detected existing TS install (already in final form, no decryption needed);
+; the source install is left untouched.
 Source: {code:GetMovieSourceDir}\Movies01.mix; DestDir: "{app}\MIX"; Check: UseDetectedMovies; Flags: external skipifsourcedoesntexist ignoreversion
 Source: {code:GetMovieSourceDir}\Movies02.mix; DestDir: "{app}\MIX"; Check: UseDetectedMovies; Flags: external skipifsourcedoesntexist ignoreversion
 Source: {code:GetMovieSourceDir}\Movies03.mix; DestDir: "{app}\MIX"; Check: UseDetectedMovies; Flags: external skipifsourcedoesntexist ignoreversion
-; Restored-movies archive: downloaded to the temp directory in the
-; "Preparing to install" step (with a real progress bar), then extracted
-; into {app}\MIX during the install phase (native Inno Setup 7 extraction).
+; Restored-movies archive: downloaded to the temp dir in the "Preparing to install" step, then
+; extracted into {app}\MIX during the install phase (native Inno Setup 7 extraction).
 Source: "{tmp}\{{ extraMovies.file }}"; DestDir: "{app}\MIX"; Check: UseDetectedMovies; Flags: external extractarchive skipifsourcedoesntexist ignoreversion
 
 [Icons]
-; All-users (elevated) installs: common Start Menu (Start Menu > CnCNet >
-; <app name>) and the public desktop. WizardNoIcons honors the wizard's
-; "Don't create any icons for this application" checkbox (AllowNoIcons=yes),
-; like the legacy ts-client-installer does.
+; All-users (elevated) installs: common Start Menu + public desktop. WizardNoIcons honors the wizard's "no icons" checkbox.
 Name: "{commonprograms}\CnCNet\{{ app.name }}"; Filename: "{app}\TiberianSun.exe"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 Name: "{commondesktop}\{{ app.name }}"; Filename: "{app}\TiberianSun.exe"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 ; Per-user installs: the user's own Start Menu and desktop.
 Name: "{autoprograms}\CnCNet\{{ app.name }}"; Filename: "{app}\TiberianSun.exe"; Check: not CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 Name: "{userdesktop}\{{ app.name }}"; Filename: "{app}\TiberianSun.exe"; Check: not CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
-; Under Wine the Windows shortcuts are not useful (like the Yuri's Revenge
-; installer), so they are skipped there.
+; Under Wine the Windows shortcuts are not useful; skip them.
 Name: "{app}\Uninstall {{ app.name }}"; Filename: "{uninstallexe}"
 
 [Run]
@@ -192,8 +154,7 @@ Type: files; Name: "{app}\KEYBOARD.INI"
 Type: files; Name: "{app}\SAVEGAME.NET"
 Type: filesandordirs; Name: "{app}\QM"
 Type: filesandordirs; Name: "{app}\Client"
-; Leftover extraction folder of the DirectX web setup from older versions of
-; this installer
+; Leftover DirectX web-setup "$tmp" folder from older versions of this installer
 Type: filesandordirs; Name: "{app}\$tmp"
 Type: files; Name: "{app}\MIX\Movies01.mix"
 Type: files; Name: "{app}\MIX\Movies02.mix"
@@ -202,8 +163,7 @@ Type: files; Name: "{app}\MIX\Expand00.mix"
 Type: dirifempty; Name: "{app}\MIX"
 
 [Registry]
-; Enable long path support (Windows 10 1607+). Only possible (and only
-; relevant) for elevated all-users installs; noerror guards the write.
+; Enable long path support (Win 10 1607+); only relevant for elevated installs; noerror guards the write.
 Root: HKLM; Subkey: "SYSTEM\CurrentControlSet\Control\FileSystem"; ValueType: dword; ValueName: "LongPathsEnabled"; ValueData: 1; Check: CncnetIsUserAnAdmin; Flags: noerror; MinVersion: 10.0.14393
 
 [Code]
@@ -217,19 +177,13 @@ var
   DetectedInstallPath: String;
   DetectionDone: Boolean;
   DetectedMoviesAnswer: Boolean;
-  // Titles of the machine-wide dependencies that are missing and cannot be
-  // installed automatically in a per-user install (see InitializeSetup).
+  // Missing machine-wide dependencies that cannot be installed in a per-user install (see InitializeSetup).
   PerUserMissingDeps: String;
 
 // ================================================== Existing install lookup
-//
-// Detects an existing Tiberian Sun install (registry, then Steam library
-// folders, then the classic C:\Westwood\SUN location) with the shared
-// ordered lookup (CncnetDetectGame): the registry installpath values are
-// passed as ExtraDirs, the Steam game folder as SteamCommonFolders and the
-// classic location as ClassicDirs; the first directory containing
-// game.exe wins. The detected path is used both as the source for copying
-// movies from (and shown in the movies prompt).
+// Shared ordered lookup (CncnetDetectGame): registry installpath as ExtraDirs, the Steam folder as
+// SteamCommonFolders, the classic location as ClassicDirs; first dir with game.exe wins.
+// The detected path is used as the source for copying movies from (and shown in the movies prompt).
 procedure DetectExistingInstall();
 var
   RegistryPath: String;
@@ -277,20 +231,11 @@ begin
   end;
 end;
 
-// Default install directory.
-//
-// All-users (elevated) installs go to the legacy C:\Westwood\ts-client
-// location. Per-user installs default to %LocalAppData%\Programs - except
-// when a previous client install is at the legacy location, in which case
-// the upgrade happens in place. The write-permission test on the
-// select-dir page (NextButtonClick) still verifies the directory is
-// writable for this user, so a locked-down legacy location is caught
-// before the install starts.
-//
-// The detected existing game install is deliberately NOT the default
-// directory: this client is not a patch and must not be installed into a
-// folder that already contains a game (enforced in NextButtonClick). The
-// detected install is only used as the source for copying movies from.
+// Default install directory: all-users -> C:\Westwood\ts-client; per-user -> %LocalAppData%\Programs
+// (in place when a previous client install is there). The select-dir write-permission test still
+// verifies the directory is writable.
+// The detected existing game install is NOT the default: this client is not a patch and must not be
+// installed into a game folder (enforced in NextButtonClick); it is only the movie-copy source.
 function GetDefaultDir(Param: String): String;
 begin
   if (CncnetIsUserAnAdmin()) or (FileExists('C:\Westwood\ts-client\TiberianSun.exe')) then
@@ -315,22 +260,15 @@ begin
   Result := DetectedMoviesAnswer;
 end;
 
-// The full-size Tiberian Sun Movies are downloaded (see the [Files] section) when
-// the movies task is selected and the movies of a detected existing install
-// are not used instead.
+// Download the full movies when the task is selected and the movies of a detected existing install are not used.
 function DownloadFullMovies(): Boolean;
 begin
   Result := WizardIsTaskSelected('Installmov') and (not DetectedMoviesAnswer);
 end;
 
-// Decides whether to copy the movies from a detected existing install (then
-// only the small restored-movies archive is downloaded, see the [Files]
-// section) or to download the full movies (when the Installmov task is
-// selected). In silent installs no prompt is shown: the movies of a detected
-// existing install are used when one is found and the Installmov task is
-// selected, otherwise the full movies are downloaded when the task is
-// selected. (Without the task selection a silent install installs no movies
-// at all, mirroring the interactive flow's default.)
+// Decides whether to copy the movies from a detected existing install (then only the small
+// restored-movies archive is downloaded) or to download the full movies. Silent installs: use the
+// detected install's movies when found and the task is selected; otherwise follow the task.
 function PrepareMovies(): Boolean;
 begin
   if WizardSilent then
@@ -348,9 +286,7 @@ end;
 
 // ------------------------------------------------------------------ Download
 
-// Movie file metadata (generated from the movies array in the profile, the
-// single source of truth for the movie URLs and filenames; the [Files]
-// section is generated from the same array).
+// Movie metadata generated from the movies array in the profile (the same array as the [Files] section).
 function GetMovieUrl(const Index: Integer): String;
 begin
   case Index of
@@ -384,9 +320,7 @@ begin
   Result := '{{ extraMovies.file }}';
 end;
 
-// Movie file sizes in KB (generated from the sizeKB values in the profile -
-// the same values the [Files] section reports as the download size). The
-// shared download engine converts to bytes (Int64(KB) * 1024).
+// Movie sizes in KB (the profile's values; the shared engine converts to bytes).
 function GetMovieSizeKB(const Index: Integer): Integer;
 begin
   case Index of
@@ -403,20 +337,10 @@ begin
   Result := {{ extraMovies.sizeKB }};
 end;
 
-// "Preparing to install" step: downloads the movie files with a real
-// progress bar (the shared CncnetCommon download page, the same page type
-// InnoDependencyInstaller uses for its dependency downloads), instead of
-// the generic install progress gauge the [Files] "download" flag would
-// produce. The files are downloaded to the temp directory and the [Files]
-// section installs them from there (Inno removes the temp directory when
-// the install finishes).
-//
-// Runs after InnoDependencyInstaller's own PrepareToInstall (the library's
-// [Code] is included first, and same-name event functions run in order),
-// so machine-wide dependencies are downloaded/installed first and the
-// movies afterwards.
-//
-// Returning a non-empty string aborts the install with that message.
+// "Preparing to install" step: downloads the movie files to the temp dir with a real progress bar
+// (the shared download page); the [Files] section installs them from there.
+// Runs after InnoDependencyInstaller's PrepareToInstall (same-name events run in include order);
+// returning a non-empty string aborts the install.
 function prepareToInstall(var NeedsRestart: Boolean): String;
 var
   MovieIndex: Integer;
@@ -442,8 +366,7 @@ end;
 
 // ============================================================ Dependencies
 
-// True when a DirectX 9 d3dx9 runtime DLL is present in either system
-// directory (on 64-bit systems 32-bit apps use the SysWOW64 copy).
+// True when a DirectX 9 d3dx9 runtime DLL is present (32-bit apps use the SysWOW64 copy).
 function HasD3DX9Runtime(): Boolean;
 begin
   Result := FileExists(ExpandConstant('{sys}\d3dx9_41.dll'))
@@ -454,11 +377,8 @@ begin
        or FileExists(ExpandConstant('{sys}\..\SysWOW64\d3dx9_43.dll'));
 end;
 
-// True when the XNA 4.0 runtime is already usable: the Refresh redist
-// registers Refresh1Installed under HKLM\SOFTWARE\Microsoft\XNA\Framework\v4.0
-// (the original 4.0 redist registers ...XNA\Framework40), or the 32-bit
-// X3DAudio audio engine DLL is already in a system directory (leftover
-// copies from an uninstalled redist are still loadable by the renderer).
+// True when the XNA 4.0 runtime is usable: the Refresh redist's Refresh1Installed value, the original
+// 4.0 registry key, or a leftover X3DAudio1_7.dll (still loadable by the renderer).
 function IsXNA40Installed(): Boolean;
 begin
   Result := RegValueExists(HKLM32, 'SOFTWARE\Microsoft\XNA\Framework\v4.0', 'Refresh1Installed')
@@ -467,33 +387,19 @@ begin
        or FileExists(ExpandConstant('{sys}\..\SysWOW64\X3DAudio1_7.dll'));
 end;
 
-// Registers all machine-wide dependencies. The library only keeps the ones
-// that are actually missing (Dependency_AddIfMissing), so afterwards
-// Dependency_List holds exactly the missing ones.
+// Registers all machine-wide dependencies; the library only keeps the ones that are actually missing.
 procedure RegisterDependencies;
 begin
-  // The launcher stub (TiberianSun.exe, CnCNet.LauncherStub) is a .NET
-  // Framework 4.x app.
+  // The launcher stub (TiberianSun.exe, CnCNet.LauncherStub) is a .NET Framework 4.x app.
   Dependency_AddDotNet48;
-  // The OpenTS client backends (Resources\BinariesNET8\clientdx etc.) are
-  // .NET 8 WPF apps that require the .NET 8 Desktop Runtime. The launcher
-  // (TiberianSun.exe) is 32-bit and always starts .NET 8 clients with the
-  // x86 dotnet host, finding it only in the 32-bit registry view
-  // (SOFTWARE\dotnet\Setup\InstalledVersions\x86), so force the x86 variant
-  // even for 64-bit setups - the x64 runtime would be useless to the client.
+  // The OpenTS client backends are .NET 8 WPF apps; the 32-bit launcher always finds the .NET 8 host
+  // only in the 32-bit registry view, so force the x86 runtime even on 64-bit setups.
   Dependency_ForceX86 := true;
   Dependency_AddDotNet80Desktop;
   Dependency_ForceX86 := false;
-  // The legacy XNA renderer (Resources\Binaries*\XNA, clientxna.exe) also
-  // needs the XNA 4.0 runtime itself: its assemblies import the X3DAudio
-  // audio engine (X3DAudio1_7.dll), which the XNA 4.0 Refresh
-  // Redistributable (xnafx40_redist.msi, still downloadable from
-  // Microsoft) installs along with XACT, XInput and the d3dx9 runtimes.
-  // Register it before the VC++ 2010 redist below so the VC++ 2010 SP1
-  // CRT build wins. (Per-user installs cannot install it: without the
-  // redist the legacy XNA renderer will not start - the ready page offers
-  // elevation, and if that fails tells the user to install the redist with
-  // an admin account and re-run the installer.)
+  // The legacy XNA renderer needs the XNA 4.0 Refresh Redistributable (X3DAudio + XACT + d3dx9 runtimes).
+  // Registered before the VC++ 2010 redist so the VC++ 2010 SP1 CRT build wins.
+  // Per-user installs cannot install it - the ready page offers elevation, else tells the user to install it with an admin account.
   Dependency_AddIfMissing(not IsXNA40Installed(),
     'xnafx40_refresh_redist.msi',
     Dependency_PassiveOrQuiet('/passive', '/quiet') + ' /norestart',
@@ -501,19 +407,13 @@ begin
     'https://download.microsoft.com/download/5/3/a/53a804c8-ec78-43cd-a0f0-2fb4d45603d3/xnafx40_redist.msi',
     '2b03c130c4bb5f106b9619bea8150201f7e982709cfe9a0ccbde75ff0a83b27',
     False, False);
-  // The legacy XNA renderer (Resources\Binaries*\XNA, clientxna.exe) is
-  // 32-bit and its XNA 4.0 assemblies import MSVCR100.dll / MSVCP100.dll
-  // (Visual C++ 2010 SP1 Redistributable) at load time, so force the x86
-  // variant of the redistributable even for 64-bit setups. (No binary in
-  // the package needs the newer VC++ runtimes; the OpenGL and DirectX
-  // renderers are fully managed MonoGame / SharpDX.)
+  // The legacy XNA renderer is 32-bit and imports MSVCR100.dll / MSVCP100.dll (VC++ 2010 SP1) - force x86.
+  // (The other renderers are fully managed MonoGame / SharpDX.)
   Dependency_ForceX86 := true;
   Dependency_AddVC2010;
   Dependency_ForceX86 := false;
-  // The XNA renderer also imports d3dx9_*.dll (DirectX 9 runtime), which is
-  // missing on some clean Windows installs. The library's Dependency_Add
-  // DirectX helper always installs, so only register it when no d3dx9
-  // runtime is present.
+  // The XNA renderer also imports d3dx9_*.dll; the library's DirectX helper always installs,
+  // so only register it when no d3dx9 runtime is present.
   if not HasD3DX9Runtime() then
     Dependency_AddDirectX;
 end;
@@ -524,19 +424,14 @@ begin
 
   if CncnetIsUserAnAdmin() then
   begin
-    // All-users (elevated) install: the library downloads and installs
-    // everything still in Dependency_List before the install starts
-    // (Dependency_PrepareToInstall).
+    // All-users install: the library downloads and installs everything still missing (Dependency_PrepareToInstall).
     if GetArrayLength(Dependency_List) > 0 then
       Log('All-users install: installing missing machine-wide dependencies first.');
   end
   else
   begin
-    // Per-user install: the .NET / VC++ redistributables are machine-wide
-    // installers that require elevation, so they cannot be installed here.
-    // Collect the missing ones for the ready-page warning
-    // (CncnetWarnMissingDeps) and unqueue them so the library does not try
-    // to install them.
+    // Per-user: the redistributables are machine-wide and require elevation; collect the missing
+    // ones for the ready-page warning (CncnetWarnMissingDeps) and unqueue them.
     CncnetCollectPerUserDeps(PerUserMissingDeps);
   end;
 
@@ -552,21 +447,15 @@ begin
   WizardForm.SelectDirBrowseLabel.Visible := false;
   ISTheme();
 
-  // Wizard title bar: client version + installer version (rendered by
-  // build-installer; the value is Pascal-escaped for this string literal).
+  // Wizard title bar: client version + installer version (rendered by build-installer, Pascal-escaped).
   WizardForm.Caption := '{{ wizardCaption }}';
 
-  // Download page for the movies (shared lib; hidden until
-  // prepareToInstall shows it; the same page type InnoDependencyInstaller
-  // uses for its dependency downloads, with a real per-file progress bar
-  // and a Stop button).
+  // Download page for the movies (shared lib; hidden until prepareToInstall shows it).
   CncnetSetupDownloadPage(
     ExpandConstant('{cm:DownloadingFiles}'),
     ExpandConstant('{cm:DownloadingFilesDescription}'));
 
-  // Give the InnoDependencyInstaller dependency page the same layout
-  // (recreated here with the shared progress callback; the library's
-  // PrepareToInstall then shows it for its queued runtimes).
+  // Give the InnoDependencyInstaller dependency page the shared layout (the library's PrepareToInstall then shows it).
   CncnetSetupDependencyDownloadPage(
     ExpandConstant('{cm:DownloadingFiles}'),
     ExpandConstant('{cm:DownloadingFilesDescription}'));
@@ -588,11 +477,7 @@ begin
   begin
     if not CncnetGotWritePermissions(ExpandConstant('{app}')) then
     begin
-      // Smart UAC: offer the elevated relaunch (the same mechanism as the
-      // ready-page deps prompt) so an elevated instance can install into
-      // this folder; declining or failing falls back to the plain
-      // access-denied explanation. In silent installs no prompt is shown
-      // (the abort ends up in the install log).
+      // Smart UAC: offer the elevated relaunch for this folder; no prompt in silent installs (the abort is logged).
       CncnetWriteDenied(
         ExpandConstant('{app}'),
         ExpandConstant('{cm:WriteDeniedPrompt}'),
@@ -601,12 +486,8 @@ begin
       Exit;
     end;
 
-    // This client is not a patch: it must not be installed into a folder
-    // that contains an original Tiberian Sun game install (game.exe), or
-    // the client files would mix with the game files. A folder that ALSO
-    // contains the client launcher (TiberianSun.exe) is a previous CnCNet
-    // client install, and installing over it is the normal in-place
-    // upgrade (see GetDefaultDir), so it is allowed.
+    // This client is not a patch: installing into a folder that contains the original game (game.exe) is refused;
+    // a folder with the client launcher (TiberianSun.exe) is a previous client install - the normal in-place upgrade.
     if FileExists(ExpandConstant('{app}\game.exe')) and
        (not FileExists(ExpandConstant('{app}\TiberianSun.exe'))) then
     begin
@@ -621,8 +502,7 @@ begin
   begin
     ForceDirectories(ExpandConstant('{app}'));
     CreateDir(ExpandConstant('{app}\MIX'));
-    // Smart UAC: only here (deps missing in a per-user install) is
-    // elevation offered - never at startup.
+    // Smart UAC: elevation is only offered here (deps missing in a per-user install), never at startup.
     CncnetWarnMissingDeps(
       PerUserMissingDeps,
       ExpandConstant('{cm:PerUserMissingDeps}'),

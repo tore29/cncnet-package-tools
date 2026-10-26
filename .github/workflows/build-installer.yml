@@ -1,6 +1,6 @@
 # Reusable installer-build workflow for the CnCNet game client packages.
 #
-# Centralized in the tools repo (maintainer's call: one shared installer CI for all games).
+# Centralized in the tools repo: one shared installer CI for all games.
 # Each game repo (ts, yr, ra, td) calls this from its own deployment workflow via:
 #
 #   uses: CnCNet/cncnet-package-tools/.github/workflows/build-installer.yml@<ref>
@@ -8,19 +8,18 @@
 #     game: ts
 #     packageDir: .            # YR/RA1: "package"
 #
-# and then keeps its EXISTING deploy job (SCP upload, live-mirror flip, Linux
-# tar.gz re-pack, public installer upload) — the SSH_* secrets live in the game
-# repos, as today. This workflow is BUILD-ONLY: it produces the `package`
-# (tar.gz) and `installer` (exe) workflow artifacts (+ GitHub release assets on a
-# published release) for the caller's deploy job to consume.
+# and then keeps its own deploy job (SCP upload, live-mirror flip, Linux
+# tar.gz re-pack, public installer upload) — the SSH_* secrets live in the
+# game repos. This workflow is BUILD-ONLY: it produces the `package`
+# (tar.gz) and `installer` (exe) workflow artifacts (+ GitHub release assets
+# on a published release) for the caller's deploy job to consume.
 #
-# Version: MIRRORS YR's functional GH Actions build system (user decision). The
-# version is the GitVersion SemVer (from the game repo's git tags + its
+# Version: the GitVersion SemVer (from the game repo's git tags + its
 # GitVersion.yml), stamped into versionconfig.ini (line 2, literal;
-# ApplyTimestampOnVersion disabled), then `version-writer` (VersionWriter.exe)
-# emits the `version` file that build-installer REQUIRES (it reads `[DTA] Version`).
-# Each game repo carries its own GitVersion.yml (YR: tag-prefix 'yr-'; TS: 'ts-')
-# + git tags — the TS GitVersion.yml + tags are TS-cutover items (HELD).
+# ApplyTimestampOnVersion disabled), then `version-writer`
+# (VersionWriter.exe) emits the `version` file that build-installer REQUIRES
+# (it reads `[DTA] Version`). Each game repo carries its own GitVersion.yml
+# (YR: tag-prefix 'yr-'; TS: 'ts-') + git tags.
 
 name: build-installer
 
@@ -87,7 +86,7 @@ jobs:
         run: npm ci --omit=dev
 
       # ---------------------------------------------------------------------------
-      # VERSION — GitVersion SemVer (mirrors YR's functional CI).
+      # VERSION — GitVersion SemVer.
       # ---------------------------------------------------------------------------
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v0.9.15
@@ -156,7 +155,7 @@ jobs:
       # Exclude dev-only content: the package dir is the repo root for TS (so dev
       # dirs like tools/MixSource/.git must be excluded) but a clean "package" dir
       # for YR/RA1. The exclude set = the profile's excludedFiles (backslash→slash)
-      # plus a few essentials. (Patterns verified on a real run.)
+      # plus a few essentials.
       # ---------------------------------------------------------------------------
       - name: Create package artifact (tar.gz)
         shell: pwsh
@@ -172,7 +171,7 @@ jobs:
           $args = @('-C', '${{ inputs.packageDir }}', '-czf', 'package.tar.gz', '--no-anchored')
           foreach ($x in $excludes) { $args += @('--exclude', $x) }
           $args += '.'
-          Write-Host "tar @args"
+          Write-Host "tar $($args -join ' ')"
           & tar @args
 
       - name: Create package artifact (zip)
@@ -208,8 +207,8 @@ jobs:
           if-no-files-found: error
 
       # ---------------------------------------------------------------------------
-      # RELEASE ASSETS — published releases only (the caller's deploy job is what
-      # gates stable-channel promotion; here we simply attach to the release).
+      # RELEASE ASSETS — published releases only (the caller's deploy job
+      # consumes the artifacts; here we simply attach them to the release).
       # ---------------------------------------------------------------------------
       - name: Upload Package Release Asset (tar.gz)
         if: github.event_name == 'release' && github.event.action == 'published'

@@ -29,9 +29,9 @@ export class TemplateModel {
     installDeleteFiles!: string[];
 
     /**
-     * Always an array: the legacy templates interpolate it raw (twig renders
-     * arrays as `a,b,c` without spaces) and the TS template applies
-     * `| join(',')`.
+     * Always an array: the templates render it with `| join(',')` (Inno's
+     * Excludes list is comma-separated, and twig would render the array
+     * without spaces).
      */
     excludedInstallerFiles!: string[];
 

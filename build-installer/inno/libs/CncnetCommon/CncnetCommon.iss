@@ -1,54 +1,15 @@
-// =============================================================================
-// CncnetCommon.iss - shared CnCNet installer functionality (Inno Setup 7)
-//
-// This file is ISPP-included from a [Code] section of a game template
-// (NOT Twig-processed - unlike the templates themselves, it is compiled
-// verbatim by ISCC). Include it AFTER libs/ISTheme/ISTheme.iss:
-//
-//   [Code]
-//   #define ISTheme... (per-game palette, if not the default)
-//   #include "libs/ISTheme/ISTheme.iss"
-//   #include "libs/CncnetCommon/CncnetCommon.iss"
-//
-// It is included from a [Code] section, so only Pascal-style (//) comments
-// are allowed here, not .iss-style (;) comments.
-//
-// What it provides (all Cncnet-prefixed; the templates keep their
-// game-specific policy code):
-//   - kernel32 / shell32 externals (Cncnet* names, unique per script)
-//   - CncnetIsUserAnAdmin / CncnetRunsOnWine / CncnetIsWineSnap
-//   - CncnetSteam_ParseConfig / CncnetSteam_GetPath /
-//     CncnetSteam_LibraryRoots / CncnetDetectGame (ordered install lookup)
-//   - CncnetGotWritePermissions (target dir write test)
-//   - CncnetBuildRelaunchCommandLine / CncnetRelaunchElevated (smart UAC:
-//     elevation is requested only when needed, never at startup)
-//   - CncnetCollectPerUserDeps / CncnetWarnMissingDeps (machine-wide
-//     dependencies for per-user installs, hooks into InnoDependencyInstaller)
-//   - CncnetWriteDenied (dir-page write-test failure: offers the same
-//     smart-UAC relaunch as CncnetWarnMissingDeps)
-//   - CncnetRunElevated (post-install launch of a program whose manifest
-//     requires elevation: asks first, then 'runas' verb + UAC consent)
-//   - CncnetThemeLicenseRadios (Inno 7 license-radio caption fix)
-//   - the generic download page (IDP-style layout, overall + per-file bars,
-//     speed/status/time rows, retry + abort/retry/ignore) and the download
-//     queue: CncnetSetupDownloadPage / CncnetDlQueueReset /
-//     CncnetDlQueueAdd / CncnetDlDownloadAll
-//   - CncnetSetupDependencyDownloadPage: gives the
-//     InnoDependencyInstaller dependency page the same layout (requires
-//     libs/InnoDependencyInstaller/CodeDependencies.iss included first)
-//
-// No event handlers are defined here: the game templates keep their own
-// InitializeWizard / NextButtonClick / prepareToInstall and call the
-// functions below from there.
-// =============================================================================
+// CncnetCommon.iss - shared CnCNet installer code (Inno Setup 7).
+// ISPP-included from a [Code] section AFTER libs/ISTheme/ISTheme.iss, so
+// only // (Pascal) comments are allowed here.
+// Provides (all Cncnet-prefixed): admin/Wine/Steam detection, smart-UAC
+// relaunch, dependency collection, license-radio theming, the generic
+// download page + queue and the dependency-download page layout.
+// No event handlers: templates keep theirs and call these from them.
 
 [Code]
 
 type
-  // One download page, its IDP-style layout controls and its per-download
-  // progress state. Two instances exist (see the var section below):
-  // CncnetDl for the template's own download page (movies etc.) and
-  // CncnetDep for the InnoDependencyInstaller dependency page.
+  // One download page: layout controls + progress state (CncnetDl, CncnetDep).
   TCncnetDl = record
     Page: TDownloadWizardPage;
     TitleLabel: TNewStaticText;
@@ -67,91 +28,50 @@ type
     RemainingLabel: TNewStaticText;
     RemainingValueLabel: TNewStaticText;
     OverallBar: TNewProgressBar;
-    // Bytes of the queued files preceding the one currently downloading,
-    // set before each download starts; the callback adds the current
-    // file's received bytes on top of it to position the overall bar.
+    // Bytes of earlier queued files (offset for the overall bar).
     BytesBase: Int64;
-    // Total bytes of the current download session (all its files), used
-    // for the "Total progress" value, the remaining-time estimate and the
-    // overall bar sizing. 0 = unknown (the overall bar is hidden and the
-    // total shown as "Unknown").
+    // Total bytes of the session (all files); 0 = unknown (bar hidden).
     SessionTotal: Int64;
-    // Size in bytes of the file currently downloading (known from the
-    // profile data), used for the "Current file" value while the engine
-    // has not reported the file size yet (ProgressMax = 0).
+    // Known size of the current file, shown until the engine reports one.
     CurrentFileSize: Int64;
-    // GetTickCount at the start of the session (the first file), for the
-    // elapsed-time row.
+    // GetTickCount at session start (elapsed row).
     SessionStartTick: Longword;
-    // Divisor applied to the overall bar's Max/Position: 1 (bytes)
-    // normally, 1048576 (megabytes) when the session total would overflow
-    // the bar's 32-bit Max (see CncnetOverallBarByteLimit).
+    // Overall bar Max/Position divisor: 1, or 1048576 when bytes would overflow the 32-bit Max.
     OverallBarScale: Int64;
-    // Download speed measurement state, only touched by the progress
-    // callback (main thread); cumulative-average speed and 1 Hz refresh.
+    // Speed measurement state (callback only; cumulative average, 1 Hz refresh).
     FileStartTick: Longword;
     LastSpeedTick: Longword;
     LastBytes: Int64;
-    // Set once the layout has been built for this instance (guards
-    // CncnetDlBuildLayout against creating the labels twice).
+    // Set once the layout is built (guards against double creation).
     Started: Boolean;
-    // True when SessionTotal was adopted from the engine's progress
-    // callback (ProgressMax) because no total was given up front (the
-    // dependency page, which the library drives one file at a time);
-    // False when a total was given by CncnetDlPrepareProgressEx (the
-    // movie page). On a file restart (a new dependency file starts with
-    // Progress back at 0) only an ADOPTED total is cleared, so a given
-    // multi-file session total survives a retry of one file - the retry
-    // path does not call CncnetDlPrepareProgressEx again.
+    // SessionTotal came from the engine callback (cleared on file restart);
+    // a total given up front survives file retries.
     TotalAdopted: Boolean;
   end;
 
 const
-  // Name of the write-permission test file the templates bundle in [Files]
-  // (Flags: dontcopy); it is extracted to the temp dir and copied into the
-  // target directory to verify the user can write there.
+  // Write-test file bundled by templates ([Files] dontcopy), copied into the target dir.
   CncnetWritePermissionTestFile = 'WritePermissionTestFile.txt';
 
-  // Largest total the overall progress bar can represent in its native
-  // (byte) units before we switch to megabyte units (the bar's Max is
-  // 32-bit; Max and Position are scaled by the same factor, so the ratio
-  // is unchanged).
+  // Largest total the overall bar can hold in bytes before scaling to MB (32-bit Max).
   CncnetOverallBarByteLimit = 2000000000;
 
 var
-  // Generic download page (created by CncnetSetupDownloadPage, laid out
-  // by CncnetDlBuildLayout) for the template's own downloads (movies etc.).
+  // The template's own download page (movies etc.).
   CncnetDl: TCncnetDl;
-  // The InnoDependencyInstaller dependency page: the library creates its
-  // own page in Dependency_InitializeWizard (nil progress callback), and
-  // CncnetSetupDependencyDownloadPage recreates it with the
-  // CncnetDepProgress callback - the callback can only be set at
-  // CreateDownloadPage time (Inno 7.0.2 exposes no OnDownloadProgress
-  // property to scripts) - plus the same layout. The library's
-  // Dependency_PrepareToInstall reads the Dependency_DownloadPage global
-  // at install time, so the replacement is picked up. The original page
-  // is never visited: download pages carry the psAlwaysSkip style, which
-  // TWizardForm.ShouldSkipPage skips during Next/Back navigation (they
-  // only appear via Show() during PrepareToInstall).
+  // InnoDependencyInstaller's page, recreated with the progress callback
+  // (only settable at CreateDownloadPage time); the library's
+  // Dependency_PrepareToInstall reads this global, so the swap applies.
   CncnetDep: TCncnetDl;
-  // Download queue (filled by CncnetDlQueueAdd, drained by
-  // CncnetDlDownloadAll). Sizes are in KB (Inno has no TArrayOfInt64;
-  // converted with Int64(KB) * 1024). 0 = size unknown.
+  // Download queue (CncnetDlQueueAdd / CncnetDlDownloadAll); sizes in KB (Inno has no TArrayOfInt64), 0 = unknown.
   CncnetDlQueueUrls: TArrayOfString;
   CncnetDlQueueFiles: TArrayOfString;
   CncnetDlQueueTitles: TArrayOfString;
   CncnetDlQueueSizesKB: TArrayOfInteger;
 
 // ==================================================================== externals
-//
-// Declared under Cncnet* names so they cannot collide with names in the
-// game templates (ISTheme already declares its own GetTickCount import,
-// ISThemeGetTickCount). Note: the shell32 import must be wrapped in a
-// named function rather than used bare - Inno's expression engine
-// (Check:, BeforeInstall:, AfterInstall:) resolves script functions by
-// name, and bare DLL imports are stored without a name, so using a bare
-// external in a Check: expression fails at install time with
-// "Internal error: Expression error 'Script error: Could not call proc.'".
+// Cncnet* names avoid collisions with template/ISTheme declarations.
+// Bare DLL imports cannot appear in Check:/BeforeInstall: expressions - wrap in a named function.
 
 function CncnetGetCurrentProcess(): THandle;
   external 'GetCurrentProcess@kernel32.dll';
@@ -166,41 +86,19 @@ function CncnetIsDebuggerPresent(): Boolean;
 function CncnetGetTickCount(): Longword;
   external 'GetTickCount@kernel32.dll stdcall';
 
-// ShellExecute (ANSI entry point) imported directly to request elevation.
-// The built-in script function ShellExec() cannot be used for this: when
-// the target file is setup's own executable (our {srcexe} relaunch) and
-// the install step has not started yet, Inno's script layer short-circuits
-// the call in IsProtectedSrcExe (Setup.ScriptFunc.HelperFunc.pas) and
-// reports ERROR_ACCESS_DENIED (5) WITHOUT any shell call at all - so
-// ShellExec('runas', '{srcexe}', ...) never elevates and no UAC prompt is
-// ever shown. A direct ShellExecute call with the 'runas' verb goes
-// through the standard elevation path and does show the UAC consent prompt.
-// All installer paths and the relaunch command line are ASCII, so the ANSI
-// entry point (ShellExecuteA) with PAnsiChar parameters is the correct
-// match (same marshaling pattern as GetModuleHandleA above).
-//
-// Return contract: > 32 = success (an HINSTANCE pseudo-handle, e.g. 0x2A);
-// <= 32 = an SE_ERR_* code (5 = access denied / user cancelled the UAC
-// prompt). The call blocks until the user makes the UAC decision.
+// Direct ShellExecuteA import for elevation: Inno's built-in ShellExec() is
+// short-circuited when the target is {srcexe} before install, so no UAC prompt is shown.
+// Paths and arguments are ASCII, so the ANSI entry point is the right match.
 function CncnetShellExecuteA(hWnd: Integer; Operation: PAnsiChar; Filename: PAnsiChar; Parameters: PAnsiChar; Directory: PAnsiChar; nShow: Integer): Integer;
   external 'ShellExecuteA@shell32.dll stdcall';
 
-// Terminates this process (kernel32 ExitProcess, never returns). Used to
-// close the per-user instance once the elevated instance has taken over:
-// per Inno's docs, Abort() called from NextButtonClick only escapes the
-// current execution path and does NOT exit Setup, which would leave this
-// wizard window open behind the elevated one. Setup's log writes are
-// unbuffered direct WriteFile calls (TTextFileWriter -> WriteBuffer), so
-// terminating without finalization loses nothing.
+// kernel32 ExitProcess: Abort() from NextButtonClick does not exit Setup, so this closes the
+// non-elevated instance once the elevated one has taken over.
 function CncnetExitProcess(ExitCode: Integer): Integer;
   external 'ExitProcess@kernel32.dll stdcall';
 
 // ==================================================================== admin
-//
-// True when the current process is running elevated (UAC). Used to decide
-// the install scope: PrivilegesRequired=lowest plus the startup scope
-// dialog means an elevated process installs for all users, a non-elevated
-// one installs for the current user.
+// True when running elevated: with PrivilegesRequired=lowest, decides the install scope.
 function CncnetShellIsUserAnAdmin(): Boolean;
   external 'IsUserAnAdmin@shell32.dll stdcall';
 function CncnetIsUserAnAdmin(): Boolean;
@@ -209,9 +107,7 @@ begin
 end;
 
 // ====================================================================== Wine
-//
-// Full Wine detection (command line, debugger, kernel32/ntdll wine_*
-// exports, {win}\wine / {sys}\wine files). Ported from the TS template.
+// Wine detection (command line, debugger, wine_* exports, {win}/{sys}\wine files).
 function CncnetRunsOnWine(): boolean;
 var
   A: Array[0..3] of String;
@@ -290,8 +186,7 @@ begin
   end;
 end;
 
-// True on Wine Snap (the YR installer's heuristic: the Tahoma font
-// registry value points into Z:\snap\).
+// True on Wine Snap (the Tahoma font registry value points into Z:\snap\).
 function CncnetIsWineSnap(): Boolean;
 var
   s: String;
@@ -307,8 +202,7 @@ end;
 // ============================================================ Steam lookup
 
 // Parses Steam's config.vdf and returns the Steam library roots
-// (the "BaseInstallFolder_N" values). Ported from the legacy
-// ts-client-installer (Shared.iss), which used this format correctly.
+// (the "BaseInstallFolder_N" values).
 function CncnetSteam_ParseConfig(const FileName: String; var Paths: TArrayOfString): Boolean;
 var
   Lines: TArrayOfString;
@@ -456,11 +350,8 @@ begin
   Count := Count + 1;
 end;
 
-// Returns the Steam library roots: the "path" entries of
-// steamapps\libraryfolders.vdf (modern Steam builds), the BaseInstallFolder_N
-// entries of config.vdf (older builds; checked in BOTH the current
-// steamapps\config location and the legacy config location), with the main
-// Steam library (SteamPath itself) included.
+// Returns the Steam library roots: libraryfolders.vdf "path" entries,
+// config.vdf BaseInstallFolder_N entries (older Steam), plus SteamPath itself.
 function CncnetSteam_LibraryRoots(var Roots: TArrayOfString): Boolean;
 var
   SteamPath: String;
@@ -477,8 +368,7 @@ begin
     Exit;
   end;
 
-  // The registry SteamPath value uses forward slashes (as written by Steam);
-  // normalize so the dedup against the libraryfolders.vdf entries works.
+  // Registry SteamPath uses forward slashes; normalize for dedup.
   StringChange(SteamPath, '/', '\');
 
   Count := 0;
@@ -512,16 +402,8 @@ begin
 end;
 
 // ====================================================== Existing game lookup
-//
-// Ordered game-install detection shared by all installers:
-//   1. ExtraDirs (e.g. the paths the game-specific registry entries point
-//      at - the templates read their own registry keys and pass the
-//      resulting directories),
-//   2. Steam: <library root>\steamapps\common\<SteamCommonFolder> for each
-//      SteamCommonFolder and each library root,
-//   3. ClassicDirs (the legacy install locations).
-// The first directory that contains CheckFile wins; it is returned in
-// DetectedDir WITHOUT a trailing backslash.
+// Ordered install detection: ExtraDirs, Steam <root>\steamapps\common\<folder>, ClassicDirs.
+// First directory containing CheckFile wins; DetectedDir has no trailing backslash.
 function CncnetDetectGame(const CheckFile: String; const ExtraDirs, SteamCommonFolders, ClassicDirs: TArrayOfString; var DetectedDir: String): Boolean;
 var
   Roots: TArrayOfString;
@@ -570,13 +452,7 @@ begin
 end;
 
 // ======================================================== write permissions
-//
-// Verifies the user can write to the target directory (the directory does
-// not exist yet at the select-dir stage - Inno creates it during the
-// install phase - so it is created first; a creation failure is exactly
-// the outcome we want to report). Ported from the TS template / the
-// legacy ts-client-installer (Shared.iss): extract the bundled test file
-// to the temp dir and copy it into the target directory.
+// Verifies the user can write to the target dir (creates it first, copies the bundled test file in).
 function CncnetGotWritePermissions(const TestDir: String): Boolean;
 var
   TestFileName: String;
@@ -591,8 +467,6 @@ begin
   if FileExists(TestFileName) then
     DeleteFile(TestFileName);
 
-  // (Inno 7: ExtractTemporaryFile is a statement, so the copy result is
-  // what is checked, exactly like the legacy installer.)
   ExtractTemporaryFile(CncnetWritePermissionTestFile);
   if CopyFile(ExpandConstant('{tmp}\') + CncnetWritePermissionTestFile, TestFileName, True) then
   begin
@@ -603,9 +477,7 @@ end;
 
 // =================================================================== UAC
 
-// Builds the standard relaunch command line for the elevated instance:
-// the current wizard directory and language, the given task (if any,
-// e.g. the movies task) and the no-icons choice.
+// Builds the relaunch command line for the elevated instance (dir, language, task, no-icons).
 function CncnetBuildRelaunchCommandLine(const TaskToKeep: String): String;
 begin
   Result := '/DIR="' + RemoveBackslashUnlessRoot(WizardDirValue) + '" /LANG="' + ExpandConstant('{language}') + '"';
@@ -615,11 +487,8 @@ begin
     Result := Result + ' /NOICONS';
 end;
 
-// Requests elevation: relaunches this setup.exe with the 'runas' verb and
-// the given command line, then terminates this instance (never returns)
-// when the UAC prompt was accepted. Returns False when elevation was
-// declined or failed (e.g. this account has no usable administrator
-// rights) - the caller decides whether to continue or warn.
+// Requests elevation: relaunches {srcexe} with the 'runas' verb and terminates this instance.
+// Returns False when declined or failed - the caller decides whether to continue.
 function CncnetRelaunchElevated(const CommandLine: String): Boolean;
 var
   ResultCode: Integer;
@@ -627,23 +496,16 @@ begin
   Result := False;
 
   Log('Relaunching elevated: ' + ExpandConstant('{srcexe}') + ' ' + CommandLine);
-  // Elevate via the direct ShellExecuteA call - why not the built-in
-  // ShellExec and the return-value contract are on the declaration above.
   ResultCode := CncnetShellExecuteA(0, 'runas', ExpandConstant('{srcexe}'), CommandLine, '', SW_SHOWNORMAL);
   if ResultCode > 32 then
   begin
-    // The elevated instance takes over; close this one (why not Abort():
-    // see the CncnetExitProcess declaration above).
+    // The elevated instance takes over; close this one.
     CncnetExitProcess(0);
   end;
 end;
 
-// Per-user installs cannot install machine-wide dependencies (they are
-// machine-wide installers that require elevation): collects the titles and
-// download URLs of everything still queued in Dependency_List into
-// MissingText (for the ready-page prompt) and unqueues them so the
-// library does not try to install them. Call from InitializeSetup when
-// not CncnetIsUserAnAdmin().
+// Per-user installs cannot install machine-wide dependencies: collects their titles/URLs into
+// MissingText for the ready-page prompt and unqueues them.
 procedure CncnetCollectPerUserDeps(var MissingText: String);
 var
   I: Integer;
@@ -662,19 +524,14 @@ begin
     Log('Per-user install: all machine-wide dependencies are already installed.');
 end;
 
-// Ready-page prompt: offers to relaunch elevated so the machine-wide
-// dependencies can be installed. No-op when MissingText is empty or the
-// install is silent (a scripted run must not trigger a UAC prompt).
-// PromptMessage / FailedMessage are the (already cm:-expanded) format
-// messages with one %1 placeholder. TaskToKeep is the task name to
-// re-select in the elevated instance ('' for none).
+// Ready-page prompt offering elevation for the machine-wide dependencies.
+// No-op when MissingText is empty or the install is silent.
 procedure CncnetWarnMissingDeps(const MissingText, PromptMessage, FailedMessage: String; const TaskToKeep: String);
 begin
   if (MissingText = '') or WizardSilent then
     exit;
 
-  // Default is IDNO: a scripted (/SUPPRESSMSGBOXES) run must not trigger a
-  // UAC prompt - it continues the per-user install instead.
+  // Default is IDNO so a scripted run does not trigger a UAC prompt.
   if (SuppressibleMsgBox(FmtMessage(PromptMessage, [TrimRight(MissingText)]), mbConfirmation, MB_YESNO, IDNO) <> IDYES) then
   begin
     Log('Per-user install continues with missing machine-wide dependencies:' + #13#10 + MissingText);
@@ -683,23 +540,14 @@ begin
 
   if not CncnetRelaunchElevated(CncnetBuildRelaunchCommandLine(TaskToKeep)) then
   begin
-    // Elevation was declined or failed: the runtimes cannot be installed
-    // without elevation, so do not continue silently - tell the user
-    // exactly what is missing and where to get it.
+    // Elevation declined/failed: do not continue silently; report what is missing.
     Log('Elevation declined or failed; missing machine-wide dependencies:' + #13#10 + MissingText);
     SuppressibleMsgBox(FmtMessage(FailedMessage, [TrimRight(MissingText)]), mbError, MB_OK, IDOK);
   end;
 end;
 
-// Dir-page write-permission failure: offers the same smart-UAC relaunch as
-// CncnetWarnMissingDeps, so an elevated instance can install into the
-// chosen folder (the elevated instance re-runs the write test and passes
-// it). PromptMessage / DeniedMessage are the (already cm:-expanded) format
-// messages with one %1 placeholder (the target dir). No-op in silent
-// installs (a scripted run must not trigger a UAC prompt); when the run is
-// already elevated the elevation offer is skipped and only the Denied
-// message is shown (elevation cannot fix a read-only location or an
-// anti-virus block).
+// Dir-page write-permission failure: offers the same smart-UAC relaunch as CncnetWarnMissingDeps.
+// No-op in silent installs; when already elevated, only the Denied message is shown.
 procedure CncnetWriteDenied(const AppDir, PromptMessage, DeniedMessage: String);
 begin
   if WizardSilent then
@@ -712,8 +560,7 @@ begin
     Exit;
   end;
 
-  // Default is IDNO: a scripted (/SUPPRESSMSGBOXES) run must not trigger a
-  // UAC prompt - it stays per-user instead.
+  // Default is IDNO so a scripted run does not trigger a UAC prompt.
   if SuppressibleMsgBox(FmtMessage(PromptMessage, [AppDir]), mbConfirmation, MB_YESNO, IDNO) <> IDYES then
   begin
     Log('Write-permission test failed; elevation declined: ' + AppDir);
@@ -722,8 +569,6 @@ begin
   end;
 
   // No task is selected yet at the dir page, so none is passed through.
-  // When the elevated instance takes over this never returns (the current
-  // instance terminates); otherwise elevation failed - explain the failure.
   if not CncnetRelaunchElevated(CncnetBuildRelaunchCommandLine('')) then
   begin
     Log('Write-permission test failed; elevation failed: ' + AppDir);
@@ -731,18 +576,8 @@ begin
   end;
 end;
 
-// Launches a program whose manifest requires elevation (a plain Exec /
-// CreateProcess from a per-user setup fails with error 740,
-// ERROR_ELEVATION_REQUIRED): asks the user first, then requests elevation
-// via the 'runas' verb (UAC consent). Unlike CncnetRelaunchElevated (which
-// relaunches this setup.exe itself and never returns on success), this
-// launches an EXTERNAL program and always returns, so the install
-// continues either way. ExeFile / WorkDir are the expanded target path and
-// working directory; PromptMessage / SkippedMessage are the (already
-// cm:-expanded) texts, SkippedMessage may be '' (no box on decline).
-// No-op (log only) in silent installs - a scripted run must not trigger a
-// UAC prompt; a /SUPPRESSMSGBOXES run is declined the same way. Returns
-// True when the program was started.
+// Launches a program whose manifest requires elevation (a plain Exec from a per-user setup fails with 740).
+// Asks first, then elevates via the 'runas' verb; no-op in silent installs. Returns True when started.
 function CncnetRunElevated(const ExeFile, WorkDir, PromptMessage, SkippedMessage: String): Boolean;
 var
   ResultCode: Integer;
@@ -751,8 +586,7 @@ begin
 
   if CncnetIsUserAnAdmin() then
   begin
-    // An elevated setup can spawn an elevation-required program directly
-    // (no UAC involved).
+    // An elevated setup can launch it directly (no UAC).
     if ShellExec('open', ExeFile, '', WorkDir, SW_SHOWNORMAL, ewNoWait, ResultCode) then
     begin
       Log('Elevated program started (setup already elevated): ' + ExeFile);
@@ -769,8 +603,7 @@ begin
     Exit;
   end;
 
-  // Default is IDNO: a scripted (/SUPPRESSMSGBOXES) run must not trigger a
-  // UAC prompt - it is skipped instead.
+  // Default is IDNO so a scripted run does not trigger a UAC prompt.
   if SuppressibleMsgBox(PromptMessage, mbConfirmation, MB_YESNO, IDNO) <> IDYES then
   begin
     Log('Elevated program skipped (declined by the user): ' + ExeFile);
@@ -779,10 +612,6 @@ begin
     Exit;
   end;
 
-  // 'runas' goes through the shell's standard elevation path and shows the
-  // UAC consent prompt; the call blocks until the user decides. (Why not
-  // the built-in ShellExec, and the return-value contract, are on the
-  // CncnetShellExecuteA declaration above.)
   ResultCode := CncnetShellExecuteA(0, 'runas', ExeFile, '', WorkDir, SW_SHOWNORMAL);
   if ResultCode > 32 then
   begin
@@ -799,11 +628,8 @@ end;
 
 // ================================================== license radio overlay
 
-// Inno 7's TNewRadioButton ignores Color and always draws its caption in
-// black - unreadable on the theme artwork. Replace each native caption
-// with a themed TLabel beside the circle; clicking the label checks the
-// underlying radio, which Inno's Next-button gating reads. Ported from
-// the RA1/YR templates (they were verbatim identical).
+// Inno 7's TNewRadioButton always draws its caption in black - replace it with a themed
+// TLabel beside the circle; clicking the label checks the underlying radio.
 procedure CncnetThemeLicenseRadio(sourceRadio: TRadioButton; onClick: TNotifyEvent);
 var
   rLeft, rTop, rWidth, rHeight: Integer;
@@ -820,18 +646,11 @@ begin
   // The circle (ring + dot) sits ~14-16px at the control's left edge.
   circleWidth := ScaleX(20);
 
-  // Clear the native caption (Inno 7: TNewRadioButton always draws it in
-  // black - Color is ignored; Font.Color only colors the selection dot),
-  // which is unreadable on the theme artwork.
+  // Clear the native caption (always drawn black in Inno 7).
   sourceRadio.Caption := '';
   // Inno 7: Font.Color only affects the selection dot - theme it to match.
   sourceRadio.Font.Color := {#ISThemeForeColor};
-  // Shrink the radio HWND to just the circle zone. Its full-width HWND would
-  // otherwise sit on top of the caption area and swallow clicks there: the
-  // empty-caption radio hit-tests the circle only, and the windowless label
-  // below can't intercept messages that go to the radio's HWND. With the
-  // HWND limited to the circle, caption clicks reach the parent surface
-  // instead, whose VCL dispatch routes them to the label's OnClick.
+  // Shrink the radio HWND to the circle zone: a full-width HWND would swallow caption clicks.
   sourceRadio.Width := circleWidth;
 
   newLabel := TLabel.Create(WizardForm);
@@ -865,9 +684,7 @@ end;
 
 // ============================================================ download page
 
-// Human-readable download speed (IDP's formatspeed): integral KB/s below
-// 1 MiB/s, one-decimal MB/s below 10 MiB/s, integral MB/s above (binary
-// units; Format gives the locale-aware decimal separator).
+// Human-readable speed: KB/s below 1 MiB/s, one-decimal MB/s below 10 MiB/s, integral MB/s above.
 function CncnetDlFormatSpeed(const BytesPerSecond: Double): String;
 begin
   if BytesPerSecond < 1048576 then
@@ -878,9 +695,7 @@ begin
     Result := IntToStr(Trunc(BytesPerSecond / 1048576.0)) + ' MB/s';
 end;
 
-// Human-readable byte count (IDP's formatsize): integral KB below 1 MiB,
-// two-decimal MB below 1 GiB, two-decimal GB above (binary units; Format
-// gives the locale-aware decimal separator).
+// Human-readable size: KB below 1 MiB, MB below 1 GiB, GB above (binary units).
 function CncnetDlFormatSize(const Bytes: Int64): String;
 begin
   if Bytes < 1048576 then
@@ -891,10 +706,7 @@ begin
     Result := Format('%.2f GB', [Bytes / 1073741824.0]);
 end;
 
-// "x of y" pair (IDP's formatsize(ofmsg, size1, size2) overload): the unit
-// is picked from the total and both values use it with two decimals, so
-// the two halves of the pair never disagree about units. A zero total
-// (unknown size) renders as a single value.
+// "x of y" pair; the unit is picked from the total. A zero total renders a single value.
 function CncnetDlFormatSizeOf(const Bytes, TotalBytes: Int64): String;
 begin
   if TotalBytes = 0 then
@@ -905,9 +717,7 @@ begin
     Result := Format('%.2f GB of %.2f GB', [Bytes / 1073741824.0, TotalBytes / 1073741824.0]);
 end;
 
-// hh:mm:ss from whole seconds, hours zero-padded (IDP formats the timer
-// as %02u:%02u:%02u). Delphi's Format('%2.0d') pads with spaces, so the
-// padding is done explicitly.
+// hh:mm:ss, hours zero-padded (Delphi's Format('%2.0d') pads with spaces, so pad manually).
 function CncnetDlFormatTime(const Seconds: Int64): String;
 var
   Hours, Minutes, Secs: Int64;
@@ -928,12 +738,8 @@ begin
   Result := Result + IntToStr(Secs);
 end;
 
-// Progress callback body, instance-based. The engine runs the HTTP
-// download on a worker thread and invokes this on the main thread (while
-// pumping window messages) at most once every 50 ms per file, with the
-// bytes received so far for the current file and the total size of that
-// file (ProgressMax is 0 while the size is still unknown). Returning
-// False would cancel the download, so always return True.
+// Progress callback body: the engine calls this on the main thread at most once per 50 ms per file.
+// Returning False would cancel the download, so always return True.
 function CncnetDlProgressEx(const Url, FileName: String; const Progress, ProgressMax: Int64; var L: TCncnetDl): Boolean;
 var
   Now: Longword;
@@ -945,23 +751,14 @@ begin
 
   Now := CncnetGetTickCount();
 
-  // A new file (or a retry) starts with a lower byte count than the last
-  // sample; restart the per-file speed clocks (IDP starts a fresh
-  // speedTimer for every file). On the dependency page (which the library
-  // drives one file at a time without a CncnetDlPrepareProgressEx reset)
-  // also drop the previous file's adopted total so the new file's size is
-  // adopted as the fresh total on its first sized tick.
+  // A new file (or a retry) starts with a lower byte count; restart the speed clocks
+  // and, for adopted totals, drop the previous file's total.
   if Progress < L.LastBytes then
   begin
     L.LastBytes := 0;
     L.FileStartTick := Now;
     L.LastSpeedTick := Now;
-    // Only clear an ADOPTED total (the dependency page, which the library
-    // drives one file at a time without a CncnetDlPrepareProgressEx reset)
-    // so this file's size is adopted as the fresh total on its first sized
-    // tick. A given total (the movie page's multi-file session total, set
-    // by CncnetDlPrepareProgressEx) must survive a retry of one file -
-    // the retry path does not call CncnetDlPrepareProgressEx again.
+    // Clear only an adopted total; a total given up front survives file retries.
     if L.TotalAdopted then
     begin
       L.SessionTotal := 0;
@@ -972,25 +769,15 @@ begin
   end;
   L.LastBytes := Progress;
 
-  // The engine writes the current file name into Msg2Label (the "File:"
-  // row value) on every tick itself; update all the other rows here.
+  // The engine writes the "File:" row itself; update the other rows here.
   Received := L.BytesBase + Progress;
   if ProgressMax > 0 then
     CurrentMax := ProgressMax
   else
     CurrentMax := L.CurrentFileSize;
 
-  // The overall bar and the "Total progress" value need a session total.
-  // The movie page gets it from CncnetDlPrepareProgressEx (the sum of the
-  // known file sizes); the dependency page gets it from the engine, which
-  // reports each file's size in this callback (ProgressMax > 0). The
-  // library downloads dependencies one file at a time (Clear -> Add ->
-  // Download, no CncnetDlPrepareProgressEx in between), so the current
-  // file's size IS the whole session - adopt it the first time the engine
-  // reports it (ProgressMax is 0 until the size is known). On the movie
-  // page this cannot fire: Received = BaseBytes + Progress stays below
-  // the given session total, and a total of 0 there is only adopted if
-  // the engine reports a size - still better than "Unknown".
+  // The overall bar needs a session total: the movie page gets it from CncnetDlPrepareProgressEx;
+  // the dependency page adopts each file's size from the engine (it downloads one file at a time).
   if (ProgressMax > 0) and ((L.SessionTotal = 0) or (L.BytesBase + Progress > L.SessionTotal)) then
   begin
     L.SessionTotal := ProgressMax;
@@ -1014,11 +801,7 @@ begin
   L.StatusValueLabel.Caption := 'Downloading...';
   L.ElapsedValueLabel.Caption := CncnetDlFormatTime((Now - L.SessionStartTick) div 1000);
 
-  // Speed and remaining time, refreshed at most once a second (IDP's
-  // speedTimer(1000) - not on every progress tick). The speed is the
-  // cumulative average for the file currently downloading, so each
-  // per-second step is stable, and the 1 Hz cadence keeps the rows from
-  // flickering on every ~50 ms tick.
+  // Speed and remaining time, refreshed at most once a second (keeps the rows from flickering).
   if Now >= L.LastSpeedTick + 1000 then
   begin
     L.LastSpeedTick := Now;
@@ -1029,10 +812,7 @@ begin
     if Speed > 0 then
     begin
       L.SpeedValueLabel.Caption := CncnetDlFormatSpeed(Speed);
-      // Remaining (IDP): the session's remaining bytes at this average
-      // speed. Speed is in bytes/second, so (bytes / bytes-per-second) is
-      // already seconds - no unit conversion. (Session total unknown:
-      // the comparison below is false, so '-' is shown.)
+      // Remaining: the session's remaining bytes at this average speed (bytes / bytes-per-second = seconds).
       if (L.SessionTotal > 0) and (Received < L.SessionTotal) then
         L.RemainingValueLabel.Caption := CncnetDlFormatTime(Trunc((L.SessionTotal - Received) / Speed))
       else
@@ -1046,32 +826,26 @@ begin
   end;
 end;
 
-// Progress callback for the template's own download page (CncnetDl); the
-// fixed signature CreateDownloadPage requires (the engine's
-// TOnDownloadProgress type).
+// Progress callback for CncnetDl (the fixed signature CreateDownloadPage requires).
 function CncnetDlProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
 begin
   Result := CncnetDlProgressEx(Url, FileName, Progress, ProgressMax, CncnetDl);
 end;
 
-// Progress callback for the InnoDependencyInstaller dependency page
-// (CncnetDep).
+// Progress callback for CncnetDep (the dependency page).
 function CncnetDepProgress(const Url, FileName: String; const Progress, ProgressMax: Int64): Boolean;
 begin
   Result := CncnetDlProgressEx(Url, FileName, Progress, ProgressMax, CncnetDep);
 end;
 
-// Sizes the overall bar and resets the per-row state before a download (or
-// the next file of a multi-file download) starts.
+// Sizes the overall bar and resets the per-row state before a download (or the next file) starts.
 procedure CncnetDlPrepareProgressEx(var L: TCncnetDl; const BaseBytes, TotalBytes, FileSize: Int64);
 begin
   L.BytesBase := BaseBytes;
   L.SessionTotal := TotalBytes;
   L.CurrentFileSize := FileSize;
   L.LastBytes := 0;
-  // A given total is never "adopted": on a file restart (a retry, on the
-  // movie page) the given multi-file total must survive - only adopted
-  // totals (dependency page) are dropped there.
+  // A given total is never "adopted" (it must survive file retries).
   L.TotalAdopted := False;
   L.FileStartTick := CncnetGetTickCount();
   L.LastSpeedTick := CncnetGetTickCount();
@@ -1080,9 +854,7 @@ begin
 
   if TotalBytes > 0 then
   begin
-    // The overall bar's Max is 32-bit, so when the session total approaches
-    // that limit, switch the bar to megabyte units (Max and Position are
-    // scaled by the same factor, so the ratio is unchanged).
+    // The bar's Max is 32-bit; above the limit, scale to MB.
     if TotalBytes > CncnetOverallBarByteLimit then
       L.OverallBarScale := 1048576
     else
@@ -1095,8 +867,7 @@ begin
   end
   else
   begin
-    // Unknown session total (all sizes 0): the overall bar cannot be
-    // sized, hide it and mark the total as unknown.
+    // Unknown session total: the bar cannot be sized; mark the total as unknown.
     L.OverallBar.Visible := False;
     L.TotalValueLabel.Caption := 'Unknown';
   end;
@@ -1108,22 +879,9 @@ begin
   L.RemainingValueLabel.Caption := '-';
 end;
 
-// Sleep alone would freeze the wizard (Inno's Sleep does not process
-// window messages), so pump in 100 ms steps exactly like
-// InnoDependencyInstaller's Dependency_Wait: TDownloadWizardPage.SetText
-// calls ProcessMsgs, which runs Application.ProcessMessages while this
-// page is current (it is, during the retry wait). The file name is passed
-// as Msg2 so the "File:" row keeps showing it during the wait (the engine
-// itself writes it there on each progress tick); the wait reason is shown
-// on the "Status:" row, not in Msg1 (that label is hidden in the IDP
-// layout).
-//
-// Note: a custom PeekMessage/TranslateMessage/DispatchMessage pump was
-// tried first, but newer Windows builds (10.0.26300 verified) no longer
-// export user32.dll's TranslateMessageA/W entry points, so Inno's script
-// engine failed to import the external at script load and the installer
-// died at startup with "Cannot import dll: utf8 user32.dll". The SetText
-// pump avoids any user32 import at all.
+// Wait while pumping window messages (Inno's Sleep alone would freeze the wizard):
+// TDownloadWizardPage.SetText runs ProcessMessages while this page is current.
+// Do not replace with a user32 PeekMessage/TranslateMessage pump - newer Windows builds no longer export TranslateMessageA/W.
 procedure CncnetDlWaitEx(var L: TCncnetDl; const Title, FileName, StatusText: String; const Milliseconds: Integer);
 var
   Step: Integer;
@@ -1136,21 +894,9 @@ begin
   end;
 end;
 
-// Downloads one file to the temp directory on the download page: a real
-// per-file progress bar plus a Stop button (TDownloadWizardPage, the same
-// page type InnoDependencyInstaller uses for its dependency downloads) -
-// instead of the generic install progress gauge the [Files] "download"
-// flag produces. The overall (all-files) bar below it is sized for
-// TotalBytes and starts at BaseBytes (the bytes of the files queued
-// before this one).
-//
-// Transient failures are retried with a backoff; afterwards the user can
-// abort the install, retry again, or ignore the file (the install then
-// continues without it; the matching [Files] entry has
-// skipifsourcedoesntexist).
-//
-// Returns True when the file is in the temp directory, or when the user
-// chose to ignore the failure.
+// Downloads one file to the temp dir on the download page (per-file bar + Stop button),
+// retrying transient failures with backoff; afterwards the user can abort, retry or ignore.
+// Returns True when the file is in the temp dir, or when the user chose to ignore the failure.
 function CncnetDlDownloadFileEx(var L: TCncnetDl; const Url, Filename, Title: String; const BaseBytes, TotalBytes, FileSize: Int64): Boolean;
 var
   Attempt: Integer;
@@ -1160,8 +906,7 @@ begin
   CncnetDlPrepareProgressEx(L, BaseBytes, TotalBytes, FileSize);
   L.Page.Clear;
   L.Page.Add(Url, Filename, '');
-  // Prefill the "File:" row value (the engine writes the file name into it
-  // on the first progress tick anyway).
+  // Prefill the "File:" row (the engine also writes it on the first tick).
   L.Page.SetText(Title, Filename);
 
   // break inside try does not leave the loop in Pascal Script, so loop on a flag
@@ -1217,9 +962,7 @@ begin
   SetArrayLength(CncnetDlQueueSizesKB, 0);
 end;
 
-// Queues one download. SizeKB is the file size in KB for the progress bar
-// (0 = unknown - the overall bar and the "Total progress" value then show
-// "Unknown"); Title is the display title ('' = "<file> (n of m)").
+// Queues one download; SizeKB = 0 shows "Unknown", Title '' = "<file> (n of m)".
 procedure CncnetDlQueueAdd(const Url, Filename, Title: String; SizeKB: Integer);
 var
   I: Integer;
@@ -1235,10 +978,7 @@ begin
   CncnetDlQueueSizesKB[I] := SizeKB;
 end;
 
-// Downloads the whole queue (one file at a time, each with its own
-// per-file progress bar, and an overall bar spanning all files with known
-// sizes). Shows and hides the page itself. Returns False as soon as a
-// download is aborted (the remaining files are not started).
+// Downloads the whole queue (per-file bar + overall bar). Shows and hides the page. Returns False on abort.
 function CncnetDlDownloadAll(): Boolean;
 var
   I, Count: Integer;
@@ -1279,46 +1019,13 @@ begin
 end;
 
 // ------------------------------------------------------------------ layout
-//
-// IDP-style (InnoDownloadPlugin) layout of the download page,
-//
-//   Title (bold)
-//   Description (two lines; hidden when the surface is too short for it)
-//   Total progress      <x of y MB>       caption + right-aligned value
-//   [overall (all-files) progress bar]    full width, 20 high
-//   Current file        <x of y MB>       caption + right-aligned value
-//   [per-file progress bar]               full width, 20 high
-//   File:       <file name>
-//   Speed:      <MB/s>
-//   Status:     <text>
-//   Elapsed time:   <hh:mm:ss>
-//   Remaining time: <hh:mm:ss>
-//
-//   [Stop button - bottom-right, below the last row]
-//
-// The page's own Caption/Description (CreateDownloadPage) never render,
-// because ISTheme.ReplaceLabel hides the form-level labels they update
-// (it clones a static label capturing the caption at init time, so the
-// real labels stay hidden forever) - hence the title and description are
-// drawn as labels on the page surface instead.
-//
-// The built-in controls are repurposed rather than recreated:
-//   Msg1Label   - hidden (the engine's SetText still writes its caption,
-//                 but nothing re-shows it)
-//   Msg2Label   - the "File:" row value (the engine writes the current
-//                 file name into it on every progress tick, and
-//                 ShowProgressControls re-shows it on the first tick, so
-//                 it cannot stay hidden)
-//   ProgressBar - the per-file ("Current file") bar
-//   AbortButton - the "Stop" button, below the last row, bottom-right
-//
-// Coordinates are relative to the page surface, in design pixels scaled
-// with ScaleX/ScaleY (like the built-in controls). The IDP gap scheme:
-// row->bar 2, bar->next row 12, bar->first info row 16, info row pitch
-// 16, last row->button 6; the info row captions sit at x=0 (116 wide)
-// with their values in the column at x=120; the Total/Current values
-// are right-aligned in a 160-wide box 10 from the surface right edge
-// (wide enough for "93.5 MB of 1409.4 MB").
+// Download page layout: title, description, Total progress + overall bar,
+// Current file + per-file bar, then File/Speed/Status/Elapsed/Remaining rows and the Stop button.
+// The page's own Caption/Description never render (ISTheme keeps the form-level
+// labels hidden), so title/description are drawn as labels on the page surface.
+// Built-in controls are repurposed: Msg1Label hidden, Msg2Label = "File:" value
+// (the engine writes it), ProgressBar = per-file bar, AbortButton = Stop.
+// Coordinates are relative to the page surface, scaled with ScaleX/ScaleY.
 procedure CncnetDlBuildLayout(const Page: TDownloadWizardPage; const Title, Description: String; var L: TCncnetDl);
 var
   SurfaceWidth, SurfaceHeight, C: Integer;
@@ -1329,10 +1036,7 @@ begin
     Exit;
   L.Page := Page;
 
-  // Per-session state defaults. CncnetDlPrepareProgressEx re-sets most of
-  // these before each download; for the dependency page (which the
-  // library drives without going through it) these are the values that
-  // stay, so the speed/elapsed rows must not start from a zero tick.
+  // Per-session defaults; CncnetDlPrepareProgressEx re-sets most of these before each download.
   L.BytesBase := 0;
   L.SessionTotal := 0;
   L.CurrentFileSize := 0;
@@ -1374,16 +1078,13 @@ begin
   L.DescriptionLabel.WordWrap := True;
   L.DescriptionLabel.Caption := Description;
 
-  // Content block top: below the title (14) + gap (16), and below the
-  // description (28) + gap (16) when it fits - the content block (Total
-  // row .. Stop button) is 207 design pixels tall.
+  // Content block top: below the title, and below the description when it fits (the block is 207px tall).
   C := ScaleY(14) + ScaleY(16);
   L.DescriptionLabel.Visible := SurfaceHeight >= C + ScaleY(28 + 16 + 207);
   if L.DescriptionLabel.Visible then
     C := C + ScaleY(28 + 16);
 
-  // "Total progress" row: caption + the value right-aligned in a 160-wide
-  // box 10 from the surface right edge.
+  // "Total progress" row: caption + the value right-aligned in a 160-wide box.
   L.TotalCaptionLabel := TNewStaticText.Create(WizardForm);
   L.TotalCaptionLabel.Parent := Page.Surface;
   L.TotalCaptionLabel.Left := 0;
@@ -1399,17 +1100,10 @@ begin
   L.TotalValueLabel.Width := ValueBoxWidth;
   L.TotalValueLabel.Height := RowHeight;
   L.TotalValueLabel.Alignment := taRightJustify;
-  // Initial value until the first sized progress tick: the movie page's
-  // CncnetDlPrepareProgressEx overwrites this on each file, and the
-  // dependency page's total is adopted from the engine's reported size
-  // on its first sized tick (see CncnetDlProgressEx).
+  // Initial value; CncnetDlPrepareProgressEx or the engine's first sized tick overwrites it.
   L.TotalValueLabel.Caption := 'Unknown';
 
-  // Overall (all-files) progress bar, full width. Hidden until a total
-  // becomes known: CncnetDlPrepareProgressEx sizes it for the movie page
-  // (the sum of the file sizes), and the engine's reported file size is
-  // adopted for the dependency page (one file at a time IS the session,
-  // see CncnetDlProgressEx).
+  // Overall (all-files) bar; hidden until a session total becomes known (see CncnetDlProgressEx).
   L.OverallBar := TNewProgressBar.Create(WizardForm);
   L.OverallBar.Parent := Page.Surface;
   L.OverallBar.Left := 0;
@@ -1446,9 +1140,7 @@ begin
   Page.ProgressBar.Width := SurfaceWidth;
   Page.ProgressBar.Height := BarHeight;
 
-  // "File:" row: caption + the built-in Msg2Label as the value (the
-  // engine writes the current file name into it on every progress tick
-  // and re-shows it on the first tick, so it cannot stay hidden).
+  // "File:" row: caption + the built-in Msg2Label as the value (the engine writes it on each tick).
   L.FileCaptionLabel := TNewStaticText.Create(WizardForm);
   L.FileCaptionLabel.Parent := Page.Surface;
   L.FileCaptionLabel.Left := 0;
@@ -1463,8 +1155,7 @@ begin
   Page.Msg2Label.Width := SurfaceWidth - ValueColumn - RightMargin;
   Page.Msg2Label.Height := RowHeight;
 
-  // Speed / Status / Elapsed time / Remaining time rows (IDP pitch: 16):
-  // caption at x=0 (116 wide) + the value in the column at x=120.
+  // Speed / Status / Elapsed / Remaining rows: caption at x=0, value in the x=120 column.
   L.SpeedLabel := TNewStaticText.Create(WizardForm);
   L.SpeedLabel.Parent := Page.Surface;
   L.SpeedLabel.Left := 0;
@@ -1529,9 +1220,7 @@ begin
   L.RemainingValueLabel.Height := RowHeight;
   L.RemainingValueLabel.Caption := '-';
 
-  // Stop button (the page's built-in AbortButton; its width comes from
-  // the button caption computed by the engine), right-aligned 10 from the
-  // surface right edge.
+  // Stop button (the page's AbortButton), right-aligned.
   Page.AbortButton.Left := SurfaceWidth - RightMargin - Page.AbortButton.Width;
   Page.AbortButton.Top := C + ScaleY(184);
   Page.AbortButton.Height := ScaleY(23);
@@ -1539,15 +1228,8 @@ begin
   L.Started := True;
 end;
 
-// Creates the generic download page (TDownloadWizardPage, the same page
-// type InnoDependencyInstaller uses for its dependency downloads, with a
-// real per-file progress bar and a Stop button) and applies the IDP-style
-// layout to the CncnetDl instance. Call from InitializeWizard (after
-// ISTheme(), so the page is created with the final form geometry).
-// Title/Description are drawn as labels on the page surface (see
-// CncnetDlBuildLayout). ShowBaseNameInsteadOfUrl makes the engine write
-// the file name (instead of the download URL) into the "File:" row on
-// every progress tick.
+// Creates the generic download page (per-file bar + Stop button) and applies the layout to CncnetDl.
+// Call from InitializeWizard (after ISTheme()); ShowBaseNameInsteadOfUrl puts the file name in the "File:" row.
 procedure CncnetSetupDownloadPage(const Title, Description: String);
 begin
   CncnetDl.Page := CreateDownloadPage(Title, Description, @CncnetDlProgress);
@@ -1555,32 +1237,11 @@ begin
   CncnetDlBuildLayout(CncnetDl.Page, Title, Description, CncnetDl);
 end;
 
-// Gives the InnoDependencyInstaller dependency page the same layout as
-// CncnetSetupDownloadPage, using the CncnetDep instance. The library
-// creates its own page with a nil progress callback in
-// Dependency_InitializeWizard (which runs before the template's
-// InitializeWizard - Inno 7 runs InitializeWizard handlers in declaration
-// order), and Inno 7.0.2 exposes no OnDownloadProgress property to
-// scripts (the callback can only be supplied to CreateDownloadPage), so
-// the page is recreated here with the CncnetDepProgress callback. The
-// library's Dependency_PrepareToInstall reads the Dependency_DownloadPage
-// global at install time, so the replacement is picked up; the original
-// page is never visited by navigation (download pages carry the
-// psAlwaysSkip style, which TWizardForm.ShouldSkipPage skips during
-// Next/Back).
-//
-// The library does not know the sizes of the queued dependencies, but the
-// engine reports each file's size in the progress callback (ProgressMax)
-// and the library downloads one file at a time - so CncnetDlProgressEx
-// adopts the reported size as the session total and the overall bar, the
-// "Total progress" value and the remaining-time estimate all work; until
-// the first sized tick the "Total progress" value shows "Unknown". The
-// built-in per-file bar and the speed/status/elapsed rows update from the
-// engine's progress ticks as well.
-//
-// Requires libs/InnoDependencyInstaller/CodeDependencies.iss to be
-// included before this file (it provides Dependency_DownloadPage).
-// Call from InitializeWizard (after ISTheme()).
+// Gives the InnoDependencyInstaller dependency page the same layout, using CncnetDep.
+// The page is recreated here with the CncnetDepProgress callback (the callback can only be supplied
+// to CreateDownloadPage); the library's Dependency_PrepareToInstall reads the Dependency_DownloadPage
+// global, so the swap is picked up. CncnetDlProgressEx adopts each file's reported size as the total.
+// Requires libs/InnoDependencyInstaller/CodeDependencies.iss included first. Call from InitializeWizard (after ISTheme()).
 procedure CncnetSetupDependencyDownloadPage(const Title, Description: String);
 begin
   Dependency_DownloadPage := CreateDownloadPage(Title, Description, @CncnetDepProgress);

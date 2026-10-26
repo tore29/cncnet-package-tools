@@ -7,8 +7,7 @@ export type PackageKind = 'patch' | 'standalone';
 /**
  * A per-game profile (`games/<id>.json`). Single source of truth for the
  * game-specific data that the shared tooling (build-installer, mix-packer,
- * version-writer, ...) needs. Values are extracted 1:1 from the game repos'
- * existing build-installer constants/templates - no invented values.
+ * version-writer, ...) needs.
  */
 export interface IGameProfile {
     id: GameId;
@@ -18,7 +17,7 @@ export interface IGameProfile {
         name: string;
         /** Inno AppId GUID - MUST stay stable per game (in-place upgrades) */
         appId?: string;
-        /** VersionInfoDescription (used by the TS reference template) */
+        /** VersionInfoDescription */
         description?: string;
         publisher: string;
         publisherUrl: string;
@@ -36,7 +35,7 @@ export interface IGameProfile {
         /**
          * What to do when the section/key is missing:
          * - 'throw' fail the build (RA1, TS)
-         * - 'undefined' render the literal string 'undefined' (YR legacy behavior)
+         * - 'undefined' render the literal string 'undefined' (YR)
          */
         missing: 'throw' | 'undefined';
         /** trim the value (RA1 trims, YR/TS do not) */
@@ -79,7 +78,7 @@ export interface IGameProfile {
 
     /**
      * How preupdateexec/updateexec [InstallDelete] entries are extracted.
-     * Per-game semantics (verified against the production builds):
+     * Per-game semantics:
      * - YR: js-ini, 2 sections, sentinel, no dedupe, sorted, filterExisting = noop-warn
      * - RA1: js-ini, 2 sections, sentinel, dedupe, sorted, filterExisting = keep-missing
      * - TS: manual line parser, 4 sections, no sentinel, dedupe, not sorted, no filter

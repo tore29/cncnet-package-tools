@@ -144,10 +144,8 @@ export class BuildInstallerService {
             setupIconFile: this.getRuntimePath(this.context.setupIconPath, useWindowsPaths),
             licenseFile: this.getRuntimePath(this.context.licenseFilePath, useWindowsPaths),
             outputBaseFilename: this.profile.output.baseFilename as string,
-            // Wizard title bar: client version (package) + installer version
-            // (build tool). Pre-formatted and Pascal-escaped here because the
-            // app name may contain apostrophes (YR) that would otherwise break
-            // the [Code] string literal.
+            // Wizard title: client + installer version, Pascal-escaped here because the app name
+            // may contain apostrophes (YR) that would break the [Code] string literal.
             wizardCaption: `Setup - ${pascalEscape(this.profile.app.name)} ${pascalEscape(appVersion)} (Installer ${pascalEscape(installerVersion)})`,
             installDeleteFiles: await this.getInstallDeleteFiles(),
             excludedInstallerFiles: this.profile.excludedFiles,
@@ -247,7 +245,7 @@ export class BuildInstallerService {
         if (spec.parser === 'manual') {
             // preupdateexec/updateexec are INI-like but their Delete sections
             // contain bare path lines (no key=value), which generic INI parsers
-            // reject, so they are parsed manually. (TS reference behavior.)
+            // reject, so they are parsed manually.
             entries = this.parseEntriesManual(content, spec.sections);
         } else {
             const ini = parseIni(content, {
@@ -267,9 +265,9 @@ export class BuildInstallerService {
         );
 
         if (spec.filterExisting === 'noop-warn') {
-            // Legacy YR behavior: Array.filter cannot await an async predicate, so
-            // every entry was kept while a fire-and-forget existence check warned
-            // about entries that still exist in the package.
+            // Keep all entries (Array.filter cannot await an async predicate)
+            // and warn, fire-and-forget, about entries that still exist in
+            // the package.
             for (const entry of entries) {
                 const entryPath = path.resolve(this.context.packagePath, entry);
 
@@ -286,8 +284,8 @@ export class BuildInstallerService {
         }
 
         if (spec.filterExisting === 'keep-missing') {
-            // Legacy RA1 behavior: keep only entries missing from the package,
-            // warn about the ones that still exist.
+            // Keep only entries missing from the package, warn about the ones
+            // that still exist.
             const missingEntries: string[] = [];
 
             await Promise.all(
@@ -368,9 +366,9 @@ export class BuildInstallerService {
     // ------------------------------------------------------------------ Mixes
 
     private async buildMixesIfNeeded(): Promise<void> {
-        // The TS reference runs the game's BuildMixes.ps1 one-shot when the mix
-        // output dir is empty. Only enabled per profile (mixes.buildInService);
-        // CI is expected to run mix-packer separately.
+        // Runs the game's BuildMixes.ps1 one-shot when the mix output dir is
+        // empty. Only enabled per profile (mixes.buildInService); CI is
+        // expected to run mix-packer separately.
         if (!this.profile.mixes.buildInService) {
             return;
         }
@@ -442,11 +440,8 @@ export class BuildInstallerService {
     }
 
     private async resolveInstallerBinary(): Promise<string> {
-        // Priority order:
-        // 1) INNO_SETUP_ISCC / ISCC_PATH env var
-        // 2) Vendored build-installer/inno/bin/ISCC.exe
-        // 3) Well-known install paths (Inno 7 and 6)
-        // 4) PATH (where ISCC.exe)
+        // ISCC lookup order: INNO_SETUP_ISCC/ISCC_PATH env var, the vendored inno/bin/ISCC.exe,
+        // well-known install paths (Inno 7 and 6), then PATH.
         const candidates: string[] = [];
 
         const envVar = process.env.INNO_SETUP_ISCC || process.env.ISCC_PATH;

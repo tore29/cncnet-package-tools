@@ -62,9 +62,8 @@ export default class MIXFile {
         const fileName = 'local mix database.dat';
 
         // Lowercase the names: the XCC database convention is lowercase
-        // filenames, and the legacy packers normalized this way too
-        // (e.g. BuildMixes.ps1 ToLowerInvariant). Member IDs are already
-        // case-insensitive, so this only affects the name list itself.
+        // filenames. Member IDs are already case-insensitive, so this
+        // only affects the name list itself.
         const fileList = Array.from(this.includedFilesID.values()).map((el) => el.fileName.toLowerCase());
         fileList.push(fileName);
         fileList.sort();
@@ -94,11 +93,8 @@ export default class MIXFile {
         const array = Array.from(this.includedFilesID.values());
         array.sort((a, b) => ~~a.id - ~~b.id);
 
-        // Basic Classic layout:
-        //   uint16 entry count
-        //   uint32 data block size
-        //   count * { uint32 id, uint32 offset, uint32 size }
-        // Offsets are relative to the beginning of the data block.
+        // MIX header: uint16 entry count, uint32 data block size, then count *
+        // { uint32 id, uint32 offset, uint32 size }; offsets relative to the data block start.
         const buf = new ExBuffer(array.length * 12 + 6);
         buf.offset = 6;
 

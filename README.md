@@ -8,7 +8,7 @@ All utilities are run from the tools root via `npm run <script>` (npm workspaces
 
 ## Game profiles (`games/`)
 
-The per-game values that used to be hard-coded per repo live in a single source of truth:
+The per-game values live in a single source of truth:
 
 | Profile     | Game            | Status |
 | ----------- | --------------- | ------ |
@@ -52,7 +52,7 @@ Output: `<profile.output.dir>/<App>_Installer.exe` (see the profile's `output.ba
 The wizard title bar shows the client version (from the package's `version` file)
 plus the installer version (`installerVersion` in `build-installer/constants.ts` —
 currently `0.1.0`; bump it manually when installer behavior changes), e.g.
-`Setup - CnCNet Red Alert 0.0 (Installer 0.1.0)`.
+`Setup - CnCNet Red Alert 0.1.2 (Installer 0.1.0)`.
 
 ISCC resolution order: `INNO_SETUP_ISCC`/`ISCC_PATH` env → vendored `inno/bin/ISCC.exe`
 → well-known Inno 7/6 install locations → `where ISCC.exe`. On Linux, `wine` is used
@@ -120,7 +120,7 @@ These are CI-oriented and are not profile-driven:
 
 | Script                        | Package                 | Description |
 | ----------------------------- | ----------------------- | ----------- |
-| `npm run release-tag-validator`   | `release-tag-validator`   | Validates that a release tag matches the `yr-x.y` / `yr-x.y.z` format (still YR-specific). |
+| `npm run release-tag-validator`   | `release-tag-validator`   | Validates that a release tag matches the `yr-x.y` / `yr-x.y.z` format (YR-specific). |
 | `npm run release-asset-uploader`  | `release-asset-uploader`  | Uploads a file as a GitHub release asset for the current tag. |
 | `npm run publish-release`         | `publish-release`         | Publishes the latest version to the server and sends an IRC release notification. |
 | `npm run ladder-maps-sync`        | `ladder-maps-sync`        | Synchronizes ladder maps. |

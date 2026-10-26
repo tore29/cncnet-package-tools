@@ -99,10 +99,8 @@ function main() {
     const packArray = ExFS.GetPackArray(inDir);
 
     if (packArray.length === 0) {
-        // Refuse to no-op: packing zero mixes means a wrong --inDir or a
-        // MixSource that still uses the legacy '*.mix' folder names (the
-        // packer only reads '*.pack'). Either way an empty result would let
-        // build-installer ship an installer with no game assets.
+        // Refuse to no-op: zero packed mixes means a wrong --inDir or '*.mix' folders (the packer
+        // only reads '*.pack'), which would ship an installer with no game assets.
         console.error(`No '*.pack' entries found in '${inDir}'. Aborting - nothing was packed.`);
         console.error('Expected folders like MixSource/<name>.pack.');
         process.exit(1);

@@ -1,35 +1,17 @@
-; =============================================================================
-; CnCNet Red Alert 2 Yuri's Revenge client installer
-;
-; This client is a PATCH: it installs the CnCNet files into the user's
-; existing Red Alert 2 Yuri's Revenge game folder. The dir page validates
-; that the chosen folder contains the game (gamemd.exe), and the default
-; directory is the detected game install (registry / Steam library /
-; classic locations) or C:\Westwood\RA2 when nothing is found.
-;
-; Install scope: per-user by default (no elevation needed). At startup the
-; user can opt into an all-users install (UAC prompt). The machine-wide
-; dependency installers only run for all-users (elevated) installs.
-;
-; Shared functionality (admin/wine detection, Steam install lookup,
-; write-permission test, per-user deps + elevation relaunch, the dependency
-; download page) lives in libs/CncnetCommon/CncnetCommon.iss and is
-; #include'd below; this template keeps the YR-specific policy code.
-;
-; This is the source template. The build renders it to installer.iss (Twig,
-; "npm run build-installer") - edit this file, never the generated output.
+; CnCNet Red Alert 2 Yuri's Revenge client installer (Inno Setup 7).
+; This client is a PATCH: it installs into the user's existing game folder (the dir page
+; validates gamemd.exe; default = the detected install or C:\Westwood\RA2).
+; Per-user install by default; all-users can be opted into at startup (UAC).
+; Machine-wide dependencies only run for the elevated (all-users) install.
+; Source template: the build renders this to installer.iss (Twig) - edit this file, never the output.
 ; =============================================================================
 
 #define public Dependency_NoExampleSetup
-; Allows us to add dependency installers
-; https://github.com/DomGries/InnoDependencyInstaller
+; Allows adding dependency installers: https://github.com/DomGries/InnoDependencyInstaller
 
 [Code]
-// All library includes live at the top of the [Code] section (the same
-// shape as the RA1 template): their [Code] sections splice into this one,
-// and the policy code below follows them.
-// No palette #defines are needed: the shared ISTheme defaults ARE the YR
-// dark palette (black background, cream text, silver text boxes).
+// All library includes live at the top of [Code]; their [Code] sections splice into this one.
+// No palette #defines needed: the shared ISTheme defaults ARE the YR dark palette.
 #include "libs/InnoDependencyInstaller/CodeDependencies.iss"
 #include "libs/ISTheme/ISTheme.iss"
 #include "libs/CncnetCommon/CncnetCommon.iss"
@@ -60,17 +42,13 @@ VersionInfoVersion=0.0.0.0
 VersionInfoTextVersion={{ app.version }}
 VersionInfoProductName={{ app.name }}
 VersionInfoDescription={{ app.description }}
-; The target folder already exists (this is a patch into the game folder);
-; do not warn about it.
+; The target folder already exists (patch into the game folder); do not warn about it.
 DirExistsWarning=no
 DefaultDirName={code:GetDefaultDir}
 DisableProgramGroupPage=yes
 DisableReadyPage=no
 DisableWelcomePage=yes
-; The finished page is kept (not disabled): YRDiag.exe runs before the
-; finished page and needs time to complete, so the launcher must not be
-; auto-launched too early (the legacy YR installer kept it enabled for the
-; same reason).
+; The finished page is kept: YRDiag.exe runs before it and the launcher must not auto-launch too early.
 DisableFinishedPage=no
 AllowNoIcons=yes
 OutputBaseFilename={{ outputBaseFilename }}
@@ -88,15 +66,9 @@ LicenseFile={{ licenseFile }}
 ArchitecturesInstallIn64BitMode=x64compatible
 UsedUserAreasWarning=no
 SetupLogging=yes
-; Per-user (current user) install by default: no elevation is needed, and
-; non-administrators can install without any extra step. At startup the
-; user is offered the chance to install for all users instead (UAC prompt);
-; "dialog commandline" also allows /ALL and /LOW command line overrides for
-; scripted installs.
-;
-; The .NET / VC++ dependency installers are machine-wide and require
-; elevation, so they only run for all-users (elevated) installs - see
-; InitializeSetup below.
+; Per-user by default (no elevation needed); at startup the user is offered an all-users
+; install (UAC); "commandline" also allows /ALL and /LOW overrides for scripted installs.
+; The .NET / VC++ dependency installers are machine-wide and only run for elevated installs.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
 
@@ -113,43 +85,32 @@ Type: filesandordirs; Name: "{app}\{{ item }}"
 {% endfor %}
 
 [Files]
-; Installer theming resources (used at runtime, not installed). Relative to
-; [Setup] SourceDir (the inno dir) - the same shape as the TS/RA1 templates.
-; The source names are prefixed per game; DestName maps them back to the
-; generic names ISTheme() loads from the temp dir.
+; Installer theming resources (used at runtime, not installed), relative to SourceDir.
+; Source names are prefixed per game; DestName maps them back to the names ISTheme() loads.
 Source: "Resources\yr\YurisRevengeWizardFormBackground.bmp"; DestName: "WizardFormBackground.bmp"; Flags: dontcopy
 Source: "Resources\yr\YurisRevengeInnerPageBackground.bmp"; DestName: "InnerPageBackground.bmp"; Flags: dontcopy
 Source: "Resources\yr\YurisRevengePageBackground.bmp"; DestName: "PageBackground.bmp"; Flags: dontcopy
 Source: "Resources\WritePermissionTestFile.txt"; Flags: dontcopy
 
-; Main client package (referenced by absolute path; critical files are also
-; listed explicitly below so the compile fails if any of them is missing)
+; Main client package; critical files are also listed explicitly (compile fails if any is missing).
 Source: "{{ sourceDir }}\*"; DestDir: "{app}"; Excludes: "{{ excludedInstallerFiles | join(',') }}"; Flags: recursesubdirs ignoreversion overwritereadonly sortfilesbyextension
 Source: "{{ sourceDir }}\version"; DestDir: "{app}";
 Source: "{{ sourceDir }}\gamemd-spawn.exe"; DestDir: "{app}";
 Source: "{{ sourceDir }}\YRDiag.exe"; DestDir: "{app}";
 
 [Icons]
-; All-users (elevated) installs: common Start Menu (Start Menu > CnCNet >
-; <app name>) and the public desktop. WizardNoIcons honors the wizard's
-; "Don't create any icons for this application" checkbox (AllowNoIcons=yes).
+; All-users (elevated) installs: common Start Menu + public desktop. WizardNoIcons honors the wizard's "no icons" checkbox.
 Name: "{commonprograms}\CnCNet\{{ app.name }}"; Filename: "{app}\CnCNetYRLauncher.exe"; WorkingDir: "{app}"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 Name: "{commondesktop}\{{ app.name }}"; Filename: "{app}\CnCNetYRLauncher.exe"; WorkingDir: "{app}"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 ; Per-user installs: the user's own Start Menu and desktop.
 Name: "{autoprograms}\CnCNet\{{ app.name }}"; Filename: "{app}\CnCNetYRLauncher.exe"; WorkingDir: "{app}"; Check: not CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 Name: "{userdesktop}\{{ app.name }}"; Filename: "{app}\CnCNetYRLauncher.exe"; WorkingDir: "{app}"; Check: not CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
-; Under Wine the Windows shortcuts are not useful (like the legacy YR
-; installer), so they are skipped there.
+; Under Wine the Windows shortcuts are not useful; skip them.
 Name: "{app}\Uninstall {{ app.name }}"; Filename: "{uninstallexe}"
 
 [Run]
-; The diagnostic tool (task 'runyrdiag') needs time to finish before the
-; game is launched, which is why the launcher launch is deferred to the
-; finished page (postinstall).
-; YRDiag.exe is NOT a [Run] entry: its manifest requires elevation, and a
-; plain launch from the per-user setup fails with error 740
-; (ERROR_ELEVATION_REQUIRED). It is started elevated from CurStepChanged
-; (see [Code]) with a user prompt - ask first, then 'runas' + UAC.
+; The launcher launch is deferred to the finished page (postinstall) so YRDiag.exe has time to finish first.
+; YRDiag.exe is NOT a [Run] entry: its manifest requires elevation (a plain launch fails with error 740) - it is started elevated from CurStepChanged.
 Filename: "{app}\CnCNetYRLauncher.exe"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,Yuri's Revenge}"; Flags: nowait postinstall runascurrentuser skipifsilent
 
 [UninstallDelete]
@@ -169,13 +130,10 @@ Type: filesandordirs; Name: "{app}\Tools"
 Type: filesandordirs; Name: "{app}\Replays"
 
 [Registry]
-; Enable long path support (Windows 10 1607+). Only possible (and only
-; relevant) for elevated all-users installs; noerror guards the write.
+; Enable long path support (Win 10 1607+); only relevant for elevated all-users installs; noerror guards the write.
 Root: HKLM; Subkey: SYSTEM\CurrentControlSet\Control\FileSystem; ValueType: dword; ValueName: LongPathsEnabled; ValueData: 1; Check: CncnetIsUserAnAdmin; Flags: noerror; MinVersion: 10.0.14393
 
-; AppCompat cleanup of legacy compatibility flags for the game EXEs
-; (carried over from the legacy YR installer). The HKCU entries do not need
-; elevation; the HKLM ones only apply to elevated all-users installs.
+; AppCompat cleanup: remove compatibility flags set on the game EXEs (HKLM only for elevated installs).
 Root: HKCU; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers; ValueName: {app}\Ra2.exe; Flags: deletevalue
 Root: HKLM; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers; ValueName: {app}\Ra2.exe; Flags: deletevalue; Check: CncnetIsUserAnAdmin
 Root: HKCU; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers; ValueName: {app}\RA2MD.exe; Flags: deletevalue
@@ -183,68 +141,47 @@ Root: HKLM; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\
 Root: HKCU; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers; ValueName: {app}\YURI.exe; Flags: deletevalue
 Root: HKLM; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers; ValueName: {app}\YURI.exe; Flags: deletevalue; Check: CncnetIsUserAnAdmin
 
-; High-DPI awareness for the game spawn process (legacy YR behavior).
+; High-DPI awareness for the game spawn process.
 Root: HKCU; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers; ValueType: String; ValueName: {app}\gamemd-spawn.exe; ValueData: "HIGHDPIAWARE"
 Root: HKLM; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers; ValueType: String; ValueName: {app}\gamemd-spawn.exe; ValueData: "HIGHDPIAWARE"; Check: CncnetIsUserAnAdmin
 
-; Wine: per-app defaults for the game spawn process (the same values the
-; package's YRLauncherUnix.sh writes at runtime, so a fresh install also
-; works under Wine out of the box).
+; Wine: per-app defaults for the game spawn process (the same values YRLauncherUnix.sh writes at runtime).
 Root: HKCU; Subkey: Software\Wine\AppDefaults\gamemd-spawn.exe; ValueType: string; ValueName: Version; ValueData: win10; Check: CncnetRunsOnWine
 Root: HKCU; Subkey: Software\Wine\AppDefaults\gamemd-spawn.exe\DllOverrides; ValueType: string; ValueName: ddraw; ValueData: native, builtin; Check: CncnetRunsOnWine
 Root: HKCU; Subkey: Software\Wine\AppDefaults\gamemd-spawn.exe\DllOverrides; ValueType: string; ValueName: wsock32; ValueData: native, builtin; Check: CncnetRunsOnWine
 
 [Code]
 const
-  // The registry keys that may point at an existing Red Alert 2 /
-  // Yuri's Revenge install. Each key is read from both the 32-bit (HKLM)
-  // and the 64-bit (HKLM64) registry views: the legacy Westwood key is a
-  // 32-bit key, the EA keys may live in the 64-bit view. The value may be
-  // the install directory or a full path to the game EXE (AddRegistryDir
-  // normalizes both). Keys and value names are from the legacy YR
-  // installer (verified in production).
+  // Registry keys that may point at an existing RA2/YR install; each is read from both the
+  // HKLM (32-bit) and HKLM64 registry views. The value may be the install directory or a full
+  // path to the game EXE (AddRegistryDir normalizes both).
   GameRegKeyWestwood = 'Software\Westwood\Red Alert 2';
   GameRegKeyTFD = 'Software\Electronic Arts\EA Games\Command and Conquer The First Decade';
   GameRegKeyOrigin = 'Software\EA Games\Command and Conquer Red Alert II';
-  // Steam library game folders; the shared lookup checks
-  // <library root>\steamapps\common\<folder> for each Steam library root.
-  // The standalone Steam Red Alert 2 / Yuri's Revenge app installs into
-  // 'Command & Conquer Red Alert II' (gamemd.exe marks it as YR, so a plain
-  // RA2 install in the same folder is not a false positive); the First
-  // Decade bundle (English + German) uses the nested EA Games path.
+  // Steam library game folders (the shared lookup checks <library root>\steamapps\common\<folder>).
+  // The standalone YR app installs into 'Command & Conquer Red Alert II' (gamemd.exe marks it as YR,
+  // so a plain RA2 in the same folder is not a false positive); First Decade uses the nested EA Games path.
   SteamGameFolderStandalone = 'Command & Conquer Red Alert II';
   SteamGameFolderEnglish = 'EA Games\Command & Conquer The First Decade\Command & Conquer Red Alert(tm) II\RA2';
   SteamGameFolderGerman = 'EA Games\Command & Conquer Die ersten 10 Jahre\Command & Conquer Red Alert(tm) II\RA2';
-  // The classic (original) install location - also the fallback default
-  // when no install is detected.
+  // The classic install location - also the fallback default when no install is detected.
   ClassicInstallDir = 'C:\Westwood\RA2';
-  // The marker EXE of a Yuri's Revenge game install. This client is a patch
-  // and must be installed into a folder that contains the game. 'gamemd.exe'
-  // (game + mission disk) is the YR engine EXE - the launchers (ra2.exe /
-  // yuri.exe) are present inconsistently across releases, so they are not a
-  // reliable marker (the legacy installer used ra2md.mix for the same reason).
+  // Marker EXE of a YR install (this client is a patch and must go into the game folder).
+  // 'gamemd.exe' is the YR engine EXE; the launchers are present inconsistently across releases.
   GameCheckFile = 'gamemd.exe';
 
 var
   DetectedInstallPath: String;
   DetectionDone: Boolean;
-  // Titles of the machine-wide dependencies that are missing and cannot be
-  // installed automatically in a per-user install (see InitializeSetup).
+  // Missing machine-wide dependencies that cannot be installed in a per-user install (see InitializeSetup).
   PerUserMissingDeps: String;
   // The custom welcome page (created in InitializeWizard).
   CustomPage: TWizardPage;
 
 // ================================================== Existing install lookup
-//
-// Detects an existing Red Alert 2 Yuri's Revenge install with the shared
-// ordered lookup (CncnetDetectGame): the registry install paths (the three
-// game keys, both registry views) are passed as ExtraDirs, the Steam First
-// Decade game folders as SteamCommonFolders and the classic locations as
-// ClassicDirs; the first directory containing gamemd.exe wins.
-//
-// Unlike the standalone TS/RA1 clients, this client is a patch: the
-// detected game folder IS the install target (see GetDefaultDir), and the
-// dir page validates that the chosen folder contains the game.
+// Shared ordered lookup (CncnetDetectGame): registry install paths as ExtraDirs, the Steam
+// folders as SteamCommonFolders, the classic locations as ClassicDirs; the first dir with gamemd.exe wins.
+// This client is a patch: the detected game folder IS the install target (see GetDefaultDir).
 function QueryGameRegValue(const SubKey, ValueName: String): String;
 var
   Value: String;
@@ -262,9 +199,7 @@ begin
   end;
 end;
 
-// Adds a candidate install directory to the lookup list. The registry
-// value may be a directory (with or without a trailing backslash) or a
-// full path to the game EXE - both are normalized to a bare directory.
+// Adds a candidate install directory (the registry value may be a directory or a full path to the game EXE).
 procedure AddRegistryDir(var Dirs: TArrayOfString; const Value: String);
 var
   Dir: String;
@@ -319,10 +254,7 @@ begin
     DetectedInstallPath := DetectedDir;
 end;
 
-// Default install directory: the detected game install (this client is a
-// patch and installs INTO the game folder), or the classic location
-// C:\Westwood\RA2 when no install was found - the dir-page validation then
-// asks the user to pick the real game folder.
+// Default install directory: the detected game install (this client is a patch), or the classic location when not found.
 function GetDefaultDir(Param: String): String;
 begin
   DetectExistingInstall();
@@ -331,19 +263,14 @@ end;
 
 // ============================================================ Dependencies
 
-// Registers all machine-wide dependencies. The library only keeps the ones
-// that are actually missing (Dependency_AddIfMissing), so afterwards
-// Dependency_List holds exactly the missing ones.
+// Registers all machine-wide dependencies; the library only keeps the ones that are actually missing.
 procedure RegisterDependencies;
 begin
   // The client tooling is a .NET Framework 4.x app.
   Dependency_AddDotNet48;
 
-  // The Red Alert 2 engine (Yuri's Revenge) and the CnCNet client
-  // components are 32-bit and import the Visual C++ 2005-2022 runtimes, so
-  // force the x86 variants even for 64-bit setups; the x64 variants cover
-  // 64-bit tooling. (The same set as the RA1 installer, verified in
-  // production.)
+  // The RA2 engine (YR) and the CnCNet client components are 32-bit and import the VC++ 2005-2022
+  // runtimes - force the x86 variants even on 64-bit setups; x64 covers 64-bit tooling.
   Dependency_ForceX86 := True;
   Dependency_AddVC2005;
   Dependency_AddVC2008;
@@ -368,9 +295,7 @@ function InitializeSetup(): Boolean;
 begin
   Result := True;
 
-  // Under Wine the Windows runtimes come from Wine itself; the
-  // machine-wide dependency installers cannot run there (legacy YR
-  // behavior).
+  // Under Wine the Windows runtimes come from Wine itself; the machine-wide installers cannot run there.
   if CncnetRunsOnWine() then
   begin
     Log('Running on Wine: skipping machine-wide dependency registration.');
@@ -381,19 +306,14 @@ begin
 
   if CncnetIsUserAnAdmin() then
   begin
-    // All-users (elevated) install: the library downloads and installs
-    // everything still in Dependency_List before the install starts
-    // (Dependency_PrepareToInstall).
+    // All-users install: the library downloads and installs everything still missing (Dependency_PrepareToInstall).
     if GetArrayLength(Dependency_List) > 0 then
       Log('All-users install: installing missing machine-wide dependencies first.');
   end
   else
   begin
-    // Per-user install: the .NET / VC++ redistributables are machine-wide
-    // installers that require elevation, so they cannot be installed here.
-    // Collect the missing ones for the ready-page warning
-    // (CncnetWarnMissingDeps) and unqueue them so the library does not try
-    // to install them.
+    // Per-user: the redistributables are machine-wide and require elevation; collect the missing
+    // ones for the ready-page warning (CncnetWarnMissingDeps) and unqueue them.
     CncnetCollectPerUserDeps(PerUserMissingDeps);
   end;
 end;
@@ -409,13 +329,10 @@ begin
   WizardForm.SelectDirBrowseLabel.Visible := false;
   ISTheme();
 
-  // Wizard title bar: client version + installer version (rendered by
-  // build-installer; the value is Pascal-escaped for this string literal).
+  // Wizard title bar: client version + installer version (rendered by build-installer, Pascal-escaped).
   WizardForm.Caption := '{{ wizardCaption }}';
 
-  // Custom welcome page (the text is the verified legacy wording): the
-  // installScript.vdf backup note. Created after ISTheme() so it gets the
-  // final form geometry.
+  // Custom welcome page with the installScript.vdf backup note; created after ISTheme() for the final form geometry.
   CustomPage := CreateCustomPage(wpWelcome, 'Welcome to the CnCNet Red Alert 2 Yuri''s Revenge Setup', 'Need help? Join our Discord: cncnet.org/discord');
 
   Memo := TRichEditViewer.Create(WizardForm);
@@ -425,25 +342,17 @@ begin
   Memo.ScrollBars := ssVertical;
   Memo.WordWrap := True;
   Memo.Text := 'Important info, please read!'#13#10#13#10'This installer will move Steams "installScript.vdf" to "Backup\installScript.vdf", this is done to ensure the correct compatibility flags are set for the CnCNet Client to function correctly.';
-  // Match the shared theme's textbox look (silver background, black text) -
-  // the default ISTheme values. The pre-quoted string renders a literal
-  // Inno preprocessor constant reference (Twig would otherwise swallow the
-  // leading brace-hash sequence as the start of a comment).
+  // Match the shared theme's textbox look (silver background, black text).
+  // Pre-quoted so Twig does not swallow the leading brace-hash as a comment start.
   Memo.Font.Color := {{ '{#' }}ISThemeTextBoxForeColor};
   Memo.Color := {{ '{#' }}ISThemeTextBoxBackColor};
 
-  // Give the InnoDependencyInstaller dependency page the shared layout
-  // (recreated here with the shared progress callback; the library's
-  // PrepareToInstall then shows it for its queued runtimes).
+  // Give the InnoDependencyInstaller dependency page the shared layout (the library's PrepareToInstall then shows it).
   CncnetSetupDependencyDownloadPage(
     ExpandConstant('{cm:DownloadingFiles}'),
     ExpandConstant('{cm:DownloadingFilesDescription}'));
 
-  // License radio labels: Inno 7's TNewRadioButton ignores Color and always
-  // draws its caption in black - unreadable on the dark theme artwork.
-  // Replace each native caption with a themed TLabel beside the circle
-  // (shared implementation, libs/CncnetCommon); clicking the label checks
-  // the underlying radio, which Inno's Next-button gating reads.
+  // License radio labels: Inno 7 draws the captions in black - replace them with themed labels (shared implementation).
   CncnetThemeLicenseRadios();
 end;
 
@@ -455,11 +364,7 @@ begin
   begin
     if not CncnetGotWritePermissions(ExpandConstant('{app}')) then
     begin
-      // Smart UAC: offer the elevated relaunch (the same mechanism as the
-      // ready-page deps prompt) so an elevated instance can install into
-      // this folder; declining or failing falls back to the plain
-      // access-denied explanation. In silent installs no prompt is shown
-      // (the abort ends up in the install log).
+      // Smart UAC: offer the elevated relaunch for this folder; no prompt in silent installs (the abort is logged).
       CncnetWriteDenied(
         ExpandConstant('{app}'),
         ExpandConstant('{cm:WriteDeniedPrompt}'),
@@ -468,10 +373,8 @@ begin
       Exit;
     end;
 
-    // This client is a patch: the target folder must contain the game
-    // (gamemd.exe), or the client files would mix with a different game
-    // install. Silent-safe: no prompt is shown in silent installs, the
-    // abort is logged.
+    // Patch: the target folder must contain the game (gamemd.exe).
+    // Silent-safe: no prompt in silent installs, the abort is logged.
     if not FileExists(ExpandConstant('{app}\gamemd.exe')) then
     begin
       if not WizardSilent then
@@ -484,9 +387,8 @@ begin
   if (CurPage = wpReady) then
   begin
     ForceDirectories(ExpandConstant('{app}'));
-    // Smart UAC: only here (deps missing in a per-user install) is
-    // elevation offered - never at startup. The runyrdiag task selection
-    // is carried into the elevated instance.
+    // Smart UAC: elevation is only offered here (deps missing in a per-user install), never at startup;
+    // the runyrdiag task selection is carried into the elevated instance.
     CncnetWarnMissingDeps(
       PerUserMissingDeps,
       ExpandConstant('{cm:PerUserMissingDeps}'),
@@ -495,12 +397,9 @@ begin
   end;
 end;
 
-// YRDiag.exe carries a manifest that requires elevation: a plain launch
-// from the per-user setup fails with error 740 (ERROR_ELEVATION_REQUIRED).
-// Ask the user first, then start it elevated via the shared smart-UAC
-// helper (libs/CncnetCommon) - the same ask-then-elevate shape as the
-// dir-page write-denied offer. Defined before CurStepChanged (Inno's
-// script Pascal has no forward references).
+// YRDiag.exe's manifest requires elevation (a plain launch from per-user setup fails with error 740);
+// ask first, then start it elevated via the shared smart-UAC helper. Defined before CurStepChanged
+// (Inno's script Pascal has no forward references).
 procedure CncnetRunYRDiag();
 begin
   if not WizardIsTaskSelected('runyrdiag') then
@@ -519,9 +418,8 @@ var
 begin
   if CurStep = ssInstall then
   begin
-    // Move Steam's installScript.vdf out of the way: it holds the
-    // compatibility flags Steam wrote for the game, and the installer's
-    // AppCompat entries must win (the legacy YR installer did the same).
+    // Move Steam's installScript.vdf out of the way: it holds the compatibility flags Steam wrote
+    // for the game, and the installer's AppCompat entries must win.
     SteamInstallScript := ExpandConstant('{app}\installScript.vdf');
     SteamInstallScriptDest := ExpandConstant('{app}\Backup\installScript.vdf');
 
@@ -544,9 +442,7 @@ begin
   end;
 
   if CurStep = ssPostInstall then
-    // The diagnostic tool (task 'runyrdiag'): started elevated here, right
-    // before the finished page - the moment its old [Run] entry used to
-    // fire (and fail with error 740).
+    // YRDiag.exe (task 'runyrdiag'): started elevated right before the finished page (a plain [Run] would fail with error 740).
     CncnetRunYRDiag();
 end;
 
