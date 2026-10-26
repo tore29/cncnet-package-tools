@@ -1,9 +1,6 @@
-// Palette and size defaults (the dark/black-cream palette used by TS and YR).
-// Each value is wrapped in an #ifndef guard so a per-game template can #define
-// its own value BEFORE including this file (e.g. the RA1 light/white palette)
-// and have it take precedence over the shared default.
-// Note: this file is #include'd from inside a [Code] section, so only
-// Pascal-style (//) comments are allowed here, not .iss-style (;) comments.
+// Palette and size defaults (dark palette used by TS and YR); each value is #ifndef-guarded so a
+// template can #define its own BEFORE including this file (e.g. the RA1 light/white palette).
+// #include'd from inside a [Code] section: only Pascal-style (//) comments are allowed here.
 #ifndef ISThemeBackgroundWidth
   #define ISThemeBackgroundWidth = '640'
 #endif
@@ -152,12 +149,8 @@ begin
   WizardForm.TypesCombo.Font.Color := {#ISThemeForeColor};
   WizardForm.NoIconsCheck.Font.Color := {#ISThemeForeColor};
 
-  // Inno 7's install page draws the status/filename labels directly on the
-  // themed page artwork (PageBackground.bmp). Both the RA1 and the YR
-  // artwork are fully dark (measured avg luminance 7-20 / 33-47, no light
-  // strip), so black text is invisible there - use the theme's fore color,
-  // like every other label on the page. (ReplaceLabel for these two stays
-  // commented out below - the native labels are fine once the color is set.)
+  // Install page labels sit on the dark page artwork: use the theme fore color,
+  // and keep the ReplaceLabel lines below commented out for these two.
   WizardForm.StatusLabel.Font.Color := {#ISThemeForeColor};
   WizardForm.FilenameLabel.Font.Color := {#ISThemeForeColor};
 
@@ -179,14 +172,8 @@ begin
   WizardForm.ComponentsList.Color := {#ISThemeBackColor};
   WizardForm.FinishedPage.Color := {#ISThemeBackColor};
   
-  // Inno 7's FinishedLabel (TNewStaticText) and RunList (TNewCheckListBox)
-  // are opaque windows that ISTheme() stretches over the full inner page
-  // (resize section above); their default clWindow background paints a white
-  // panel over the themed page image on the finished page. TNewStaticText's
-  // Transparent property is a no-op without VCL styles (see NewStaticText.pas),
-  // so use Color instead: clNone leaves the background unpainted (TBrush:
-  // clNone = bsClear), the page background image shows through, and the themed
-  // fore color (set in the color-text section) stays readable on it.
+  // FinishedLabel/RunList are opaque windows over the finished page: use clNone
+  // (Transparent is a no-op on these) so the page background image shows through.
   WizardForm.FinishedLabel.Color := clNone;
   WizardForm.RunList.Color := clNone;
 
@@ -251,27 +238,9 @@ begin
   WizardForm.LicenseMemo.UseRichEdit := false;
 end;
 
-// ---------------------------------------------------------------------------
-// Dir-page double-Next guard (Inno 7)
-//
-// A second Next activation that lands shortly after the directory page
-// appeared (a double-click, a key repeat, or any double input while the
-// user's finger is still on the button) flashes the page past and starts
-// the install. The only sanctioned veto in Inno's event set is
-// NextButtonClick (WizardButtonClicked does not exist in 7.1.0), so we
-// veto that one click; the user's deliberate Next (after the window)
-// passes.
-//
-// Two rules:
-// - Silent installs are never vetoed: Setup "simulates" Next clicks on
-//   silent runs and a False there aborts the unattended install (per the
-//   7.1.0 event docs).
-// - Event attributes are the documented way for an INCLUDED script to join
-//   an event without clashing with the main script's own implementation
-//   (the YR/TS templates define their own NextButtonClick; all
-//   implementations must return True, a False stops the others - our
-//   veto therefore still wins, and when we return True their validation
-//   runs).
+// Dir-page double-Next guard: veto one rapid second Next (double-click / key
+// repeat) before it flashes past the page and starts the install. Never veto
+// when WizardSilent (a False aborts unattended installs); return True when not vetoing.
 
 var
   ISThemeDirPageEnterTick: Longword;

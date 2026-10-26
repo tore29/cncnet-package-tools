@@ -99,7 +99,7 @@ Source: "{{ sourceDir }}\gamemd-spawn.exe"; DestDir: "{app}";
 Source: "{{ sourceDir }}\YRDiag.exe"; DestDir: "{app}";
 
 [Icons]
-; All-users (elevated) installs: common Start Menu + public desktop. WizardNoIcons honors the wizard's "no icons" checkbox.
+; All-users (elevated) installs: common Start Menu + public desktop. WizardNoIcons honors the "no icons" checkbox.
 Name: "{commonprograms}\CnCNet\{{ app.name }}"; Filename: "{app}\CnCNetYRLauncher.exe"; WorkingDir: "{app}"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 Name: "{commondesktop}\{{ app.name }}"; Filename: "{app}\CnCNetYRLauncher.exe"; WorkingDir: "{app}"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 ; Per-user installs: the user's own Start Menu and desktop.
@@ -110,7 +110,8 @@ Name: "{app}\Uninstall {{ app.name }}"; Filename: "{uninstallexe}"
 
 [Run]
 ; The launcher launch is deferred to the finished page (postinstall) so YRDiag.exe has time to finish first.
-; YRDiag.exe is NOT a [Run] entry: its manifest requires elevation (a plain launch fails with error 740) - it is started elevated from CurStepChanged.
+; YRDiag.exe is NOT a [Run] entry: its manifest requires elevation (a plain launch fails with error 740);
+; it is started elevated from CurStepChanged, right before the finished page.
 Filename: "{app}\CnCNetYRLauncher.exe"; WorkingDir: "{app}"; Description: "{cm:LaunchProgram,Yuri's Revenge}"; Flags: nowait postinstall runascurrentuser skipifsilent
 
 [UninstallDelete]
@@ -254,7 +255,7 @@ begin
     DetectedInstallPath := DetectedDir;
 end;
 
-// Default install directory: the detected game install (this client is a patch), or the classic location when not found.
+// Default install directory: the detected game install (this client is a patch), else the classic location.
 function GetDefaultDir(Param: String): String;
 begin
   DetectExistingInstall();
@@ -442,7 +443,7 @@ begin
   end;
 
   if CurStep = ssPostInstall then
-    // YRDiag.exe (task 'runyrdiag'): started elevated right before the finished page (a plain [Run] would fail with error 740).
+    // YRDiag.exe (task 'runyrdiag'): started elevated before the finished page (a plain [Run] would fail with 740).
     CncnetRunYRDiag();
 end;
 

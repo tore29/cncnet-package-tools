@@ -881,7 +881,7 @@ end;
 
 // Wait while pumping window messages (Inno's Sleep alone would freeze the wizard):
 // TDownloadWizardPage.SetText runs ProcessMessages while this page is current.
-// Do not replace with a user32 PeekMessage/TranslateMessage pump - newer Windows builds no longer export TranslateMessageA/W.
+// Do not swap in a user32 pump - newer Windows no longer export TranslateMessageA/W.
 procedure CncnetDlWaitEx(var L: TCncnetDl; const Title, FileName, StatusText: String; const Milliseconds: Integer);
 var
   Step: Integer;
@@ -1019,13 +1019,9 @@ begin
 end;
 
 // ------------------------------------------------------------------ layout
-// Download page layout: title, description, Total progress + overall bar,
-// Current file + per-file bar, then File/Speed/Status/Elapsed/Remaining rows and the Stop button.
-// The page's own Caption/Description never render (ISTheme keeps the form-level
-// labels hidden), so title/description are drawn as labels on the page surface.
-// Built-in controls are repurposed: Msg1Label hidden, Msg2Label = "File:" value
-// (the engine writes it), ProgressBar = per-file bar, AbortButton = Stop.
-// Coordinates are relative to the page surface, scaled with ScaleX/ScaleY.
+// Title/description as labels (the page's own never render under ISTheme),
+// then File/Speed/Status/Elapsed/Remaining rows + overall/per-file bars + Stop.
+// Repurposed: Msg1Label hidden, Msg2Label = "File:" value, ProgressBar = per-file bar, AbortButton = Stop.
 procedure CncnetDlBuildLayout(const Page: TDownloadWizardPage; const Title, Description: String; var L: TCncnetDl);
 var
   SurfaceWidth, SurfaceHeight, C: Integer;
@@ -1237,11 +1233,9 @@ begin
   CncnetDlBuildLayout(CncnetDl.Page, Title, Description, CncnetDl);
 end;
 
-// Gives the InnoDependencyInstaller dependency page the same layout, using CncnetDep.
-// The page is recreated here with the CncnetDepProgress callback (the callback can only be supplied
-// to CreateDownloadPage); the library's Dependency_PrepareToInstall reads the Dependency_DownloadPage
-// global, so the swap is picked up. CncnetDlProgressEx adopts each file's reported size as the total.
-// Requires libs/InnoDependencyInstaller/CodeDependencies.iss included first. Call from InitializeWizard (after ISTheme()).
+// Same layout for the InnoDependencyInstaller dependency page, via CncnetDep; the library reads the
+// Dependency_DownloadPage global, so recreating it here is picked up. Requires libs/InnoDependencyInstaller/
+// CodeDependencies.iss included first; call from InitializeWizard (after ISTheme()).
 procedure CncnetSetupDependencyDownloadPage(const Title, Description: String);
 begin
   Dependency_DownloadPage := CreateDownloadPage(Title, Description, @CncnetDepProgress);

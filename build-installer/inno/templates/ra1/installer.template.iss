@@ -116,7 +116,7 @@ Source: "{tmp}\{{ movie.file }}"; DestDir: "{app}"; DestName: "{{ movie.file }}"
 Source: {code:GetMovieSourceDir}\MAIN2.MIX; DestDir: "{app}"; DestName: "MOVIES-10.MIX"; Check: UseDetectedMovies; Flags: external skipifsourcedoesntexist ignoreversion
 
 [Icons]
-; All-users (elevated) installs: common Start Menu + public desktop. WizardNoIcons honors the wizard's "no icons" checkbox.
+; All-users (elevated) installs: common Start Menu + public desktop. WizardNoIcons honors the "no icons" checkbox.
 Name: "{commonprograms}\CnCNet\{{ app.name }}"; Filename: "{app}\RedAlert.exe"; WorkingDir: "{app}"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 Name: "{commondesktop}\{{ app.name }}"; Filename: "{app}\RedAlert.exe"; WorkingDir: "{app}"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 ; Per-user installs: the user's own Start Menu and desktop.

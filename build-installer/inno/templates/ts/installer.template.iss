@@ -76,7 +76,7 @@ SetupLogging=yes
 ; The .NET / VC++ / DirectX dependency installers are machine-wide and only run for elevated installs.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
-; ArchiveExtraction must be "full" (the default): the extractarchive flag (restored-movies archive) is not supported by "basic".
+; ArchiveExtraction must be "full" (default): the extractarchive flag (restored-movies) is not supported by "basic".
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -119,7 +119,7 @@ Source: {code:GetMovieSourceDir}\Movies03.mix; DestDir: "{app}\MIX"; Check: UseD
 Source: "{tmp}\{{ extraMovies.file }}"; DestDir: "{app}\MIX"; Check: UseDetectedMovies; Flags: external extractarchive skipifsourcedoesntexist ignoreversion
 
 [Icons]
-; All-users (elevated) installs: common Start Menu + public desktop. WizardNoIcons honors the wizard's "no icons" checkbox.
+; All-users (elevated) installs: common Start Menu + public desktop. WizardNoIcons honors the "no icons" checkbox.
 Name: "{commonprograms}\CnCNet\{{ app.name }}"; Filename: "{app}\TiberianSun.exe"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 Name: "{commondesktop}\{{ app.name }}"; Filename: "{app}\TiberianSun.exe"; Check: CncnetIsUserAnAdmin and not CncnetRunsOnWine and not WizardNoIcons
 ; Per-user installs: the user's own Start Menu and desktop.
@@ -399,7 +399,8 @@ begin
   Dependency_ForceX86 := false;
   // The legacy XNA renderer needs the XNA 4.0 Refresh Redistributable (X3DAudio + XACT + d3dx9 runtimes).
   // Registered before the VC++ 2010 redist so the VC++ 2010 SP1 CRT build wins.
-  // Per-user installs cannot install it - the ready page offers elevation, else tells the user to install it with an admin account.
+  // Per-user installs cannot install it - the ready page offers elevation,
+  // else the user must install it with an admin account.
   Dependency_AddIfMissing(not IsXNA40Installed(),
     'xnafx40_refresh_redist.msi',
     Dependency_PassiveOrQuiet('/passive', '/quiet') + ' /norestart',
