@@ -1,5 +1,5 @@
-// Palette and size defaults (dark palette used by TS and YR); each value is #ifndef-guarded so a
-// template can #define its own BEFORE including this file (e.g. the RA1 light/white palette).
+// Palette and size defaults (shared by all games); each value is #ifndef-guarded so a
+// template can #define its own BEFORE including this file.
 // #include'd from inside a [Code] section: only Pascal-style (//) comments are allowed here.
 #ifndef ISThemeBackgroundWidth
   #define ISThemeBackgroundWidth = '640'
@@ -14,7 +14,7 @@
   #define ISThemeForeColor = '$FFF4E8'
 #endif
 #ifndef ISThemeTextBoxBackColor
-  #define ISThemeTextBoxBackColor = '$C0C0C0'
+  #define ISThemeTextBoxBackColor = '$FFFFFF'
 #endif
 #ifndef ISThemeTextBoxForeColor
   #define ISThemeTextBoxForeColor = '$000000'
@@ -153,13 +153,14 @@ begin
   // and keep the ReplaceLabel lines below commented out for these two.
   WizardForm.StatusLabel.Font.Color := {#ISThemeForeColor};
   WizardForm.FilenameLabel.Font.Color := {#ISThemeForeColor};
+  // The license memo follows the page theme (dark + cream), not the textbox palette.
+  WizardForm.LicenseMemo.Font.Color := {#ISThemeForeColor};
 
   WizardForm.GroupEdit.font.Color := {#ISThemeTextBoxForeColor};
   WizardForm.DirEdit.font.Color := {#ISThemeTextBoxForeColor};
   WizardForm.InfoBeforeMemo.Font.Color := {#ISThemeTextBoxForeColor}; 
   WizardForm.ReadyMemo.Font.Color := {#ISThemeTextBoxForeColor};
   WizardForm.InfoAfterMemo.Font.Color := {#ISThemeTextBoxForeColor};
-  WizardForm.LicenseMemo.Font.Color := {#ISThemeTextBoxForeColor};
   
   //### color backgrounds ###
   WizardForm.MainPanel.Color := {#ISThemeBackColor};
@@ -171,6 +172,7 @@ begin
   WizardForm.TypesCombo.Color := {#ISThemeBackColor};
   WizardForm.ComponentsList.Color := {#ISThemeBackColor};
   WizardForm.FinishedPage.Color := {#ISThemeBackColor};
+  WizardForm.LicenseMemo.Color := {#ISThemeBackColor};
   
   // FinishedLabel/RunList are opaque windows over the finished page: use clNone
   // (Transparent is a no-op on these) so the page background image shows through.
@@ -182,7 +184,6 @@ begin
   WizardForm.InfoAfterMemo.Color := {#ISThemeTextBoxBackColor};
   WizardForm.ReadyMemo.Color := {#ISThemeTextBoxBackColor};
   WizardForm.InfoBeforeMemo.Color := {#ISThemeTextBoxBackColor};
-  WizardForm.LicenseMemo.Color := {#ISThemeTextBoxBackColor};
   
   //### bold textbox font ###
   WizardForm.InfoAfterMemo.Font.Style := [fsBold];

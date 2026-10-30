@@ -11,13 +11,6 @@
 #define public Dependency_NoExampleSetup
 ; Allows adding dependency installers: https://github.com/DomGries/InnoDependencyInstaller
 
-; RA1 palette: the RA1 artwork is dark red, so the shared dark theme with the shared cream
-; fore color keeps the labels readable; text boxes stay white with black text.
-#define ISThemeBackColor = '$000000'
-#define ISThemeForeColor = '$FFF4E8'
-#define ISThemeTextBoxBackColor = '$FFFFFF'
-#define ISThemeTextBoxForeColor = '$000000'
-
 [Code]
 // All library includes live at the top of the [Code] section; their [Code] sections splice into this one.
 #include "libs/InnoDependencyInstaller/CodeDependencies.iss"
@@ -387,10 +380,6 @@ begin
 
   // Wizard title bar: client version + installer version (rendered by build-installer, Pascal-escaped).
   WizardForm.Caption := '{{ wizardCaption }}';
-
-  // The license memo follows the page theme (dark + cream); the dir page's edit stays white with black text.
-  WizardForm.LicenseMemo.Color := {{ '{#' }}ISThemeBackColor};
-  WizardForm.LicenseMemo.Font.Color := {{ '{#' }}ISThemeForeColor};
 
   // Download page for the movies (shared lib; hidden until prepareToInstall shows it).
   CncnetSetupDownloadPage(

@@ -11,7 +11,6 @@
 
 [Code]
 // All library includes live at the top of [Code]; their [Code] sections splice into this one.
-// No palette #defines needed: the shared ISTheme defaults ARE the YR dark palette.
 #include "libs/InnoDependencyInstaller/CodeDependencies.iss"
 #include "libs/ISTheme/ISTheme.iss"
 #include "libs/CncnetCommon/CncnetCommon.iss"
@@ -343,7 +342,7 @@ begin
   Memo.ScrollBars := ssVertical;
   Memo.WordWrap := True;
   Memo.Text := 'Important info, please read!'#13#10#13#10'This installer will move Steams "installScript.vdf" to "Backup\installScript.vdf", this is done to ensure the correct compatibility flags are set for the CnCNet Client to function correctly.';
-  // Match the shared theme's textbox look (silver background, black text).
+  // Match the ISTheme textbox look (white background, black text).
   // Pre-quoted so Twig does not swallow the leading brace-hash as a comment start.
   Memo.Font.Color := {{ '{#' }}ISThemeTextBoxForeColor};
   Memo.Color := {{ '{#' }}ISThemeTextBoxBackColor};

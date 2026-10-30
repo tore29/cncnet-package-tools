@@ -461,13 +461,8 @@ begin
     ExpandConstant('{cm:DownloadingFiles}'),
     ExpandConstant('{cm:DownloadingFilesDescription}'));
 
-  WizardForm.LicenseAcceptedRadio.Checked := True;
-  WizardForm.LicenseAcceptedRadio.Visible := False;
-  WizardForm.LicenseNotAcceptedRadio.Visible := False;
-  WizardForm.LicenseMemo.Height :=
-    WizardForm.LicenseNotAcceptedRadio.Top +
-    WizardForm.LicenseNotAcceptedRadio.Height -
-    WizardForm.LicenseMemo.Top - ScaleY(5);
+  // License radio labels: Inno 7 draws the captions in black - replace them with themed labels (CncnetCommon's CncnetThemeLicenseRadios).
+  CncnetThemeLicenseRadios();
 end;
 
 function NextButtonClick(CurPage: Integer): Boolean;
