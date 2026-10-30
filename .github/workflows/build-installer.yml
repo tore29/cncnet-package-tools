@@ -208,7 +208,7 @@ jobs:
 
       # ---------------------------------------------------------------------------
       # RELEASE ASSETS — published releases only (the caller's deploy job
-      # consumes the artifacts; here we simply attach them to the release).
+      # consumes the artifacts; this job only attaches them to the release).
       # ---------------------------------------------------------------------------
       - name: Upload Package Release Asset (tar.gz)
         if: github.event_name == 'release' && github.event.action == 'published'

@@ -12,7 +12,7 @@
 ; Allows adding dependency installers: https://github.com/DomGries/InnoDependencyInstaller
 
 [Code]
-// All library includes live at the top of the [Code] section; their [Code] sections splice into this one.
+// All #include directives live at the top of the [Code] section; the included files' [Code] sections splice into this one.
 #include "libs/InnoDependencyInstaller/CodeDependencies.iss"
 #include "libs/ISTheme/ISTheme.iss"
 #include "libs/CncnetCommon/CncnetCommon.iss"
@@ -66,8 +66,9 @@ UsedUserAreasWarning=no
 SetupLogging=yes
 ; Per-user by default (no elevation needed); at startup the user is offered an all-users install
 ; (UAC); "commandline" also allows /ALL and /LOW overrides for scripted installs.
-; All-users installs go to the previous client location (common Start Menu / public desktop);
-; per-user installs go to %LocalAppData%\Programs (unless upgrading in place, see GetDefaultDir).
+; All-users installs go to the Program Files directory (CnCNet\Red Alert under it); per-user installs go to
+; %LocalAppData%\Programs\CnCNet Red Alert (unless upgrading in place, see GetDefaultDir); shortcuts follow
+; the same split (common Start Menu / public desktop vs. the user's own Start Menu / desktop).
 ; The .NET / VC++ dependency installers are machine-wide and only run for elevated installs.
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog commandline
@@ -81,7 +82,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "Installmov"; Description: "Download and install movies"; GroupDescription: "Music and movies"; Flags: unchecked
 
 [InstallDelete]
-; files to delete prior to installation (from preupdateexec/updateexec)
+; files to delete prior to installation; the list is generated from the package's preupdateexec and
+; updateexec files (their Delete and DeleteFolder sections)
 {% for file in installDeleteFiles %}
 Type: filesandordirs; Name: "{app}\{{ file }}"
 {% endfor %}
@@ -104,7 +106,7 @@ Source: "{{ sourceDir }}\RedAlert.exe"; DestDir: "{app}";
 Source: "{tmp}\{{ movie.file }}"; DestDir: "{app}"; DestName: "{{ movie.file }}"; Check: DownloadFullMovies; Flags: external skipifsourcedoesntexist ignoreversion
 {% endfor %}
 
-; Movies copied from a detected existing Red Alert install (the TUC game ships the movie mix as
+; Movies copied from a detected existing Red Alert install (the original game ships the movie mix as
 ; MAIN2.MIX, installed as MOVIES-10.MIX - PLACEHOLDER until the structure is finalized). Source left untouched.
 Source: {code:GetMovieSourceDir}\MAIN2.MIX; DestDir: "{app}"; DestName: "MOVIES-10.MIX"; Check: UseDetectedMovies; Flags: external skipifsourcedoesntexist ignoreversion
 
@@ -148,7 +150,7 @@ const
   WOW6432GameRegKey = 'Software\WOW6432Node\Westwood\Red Alert Windows 95 Edition';
   SteamGameFolder = 'Command & Conquer Red Alert';
   ClassicInstallDir = 'C:\Westwood\RedAlert';
-  // Marker file of an original RA (TUC) install; the detected install is only used as the movie-copy source.
+  // Marker file of an original Red Alert install; the detected install is only used as the movie-copy source.
   GameCheckFile = 'RA95.EXE';
 
 var
@@ -195,7 +197,7 @@ begin
     end;
   end;
 
-  // 2. Steam library folders (shared lookup, both config.vdf locations)
+  // 2. Steam library folders (CncnetDetectGame checks <library root>\steamapps\common\<folder> for each Steam library root)
   SetArrayLength(SteamCommonFolders, 1);
   SteamCommonFolders[0] := SteamGameFolder;
 
@@ -287,7 +289,7 @@ begin
   end;
 end;
 
-// Movie sizes in KB (the profile's values; the shared engine converts to bytes).
+// Movie sizes in KB (the profile's values; CncnetCommon's download page converts to bytes).
 function GetMovieSizeKB(const Index: Integer): Integer;
 begin
   case Index of
@@ -300,7 +302,7 @@ begin
 end;
 
 // "Preparing to install" step: downloads the movie files to the temp dir with a real progress bar
-// (the shared download page); the [Files] section installs them from there.
+// (CncnetCommon's download page); the [Files] section installs them from there.
 // Runs after InnoDependencyInstaller's PrepareToInstall (same-name events run in include order);
 // returning a non-empty string aborts the install.
 function prepareToInstall(var NeedsRestart: Boolean): String;
@@ -321,7 +323,7 @@ end;
 
 // ============================================================ Dependencies
 
-// Registers all machine-wide dependencies; the library only keeps the ones that are actually missing.
+// Registers all machine-wide dependencies; InnoDependencyInstaller only keeps the ones that are actually missing.
 procedure RegisterDependencies;
 begin
   // The client tooling is a .NET Framework 4.x app.
@@ -355,7 +357,7 @@ begin
 
   if CncnetIsUserAnAdmin() then
   begin
-    // All-users install: the library downloads and installs everything still missing (Dependency_PrepareToInstall).
+    // All-users install: InnoDependencyInstaller downloads and installs everything still missing (Dependency_PrepareToInstall).
     if GetArrayLength(Dependency_List) > 0 then
       Log('All-users install: installing missing machine-wide dependencies first.');
   end
@@ -381,17 +383,17 @@ begin
   // Wizard title bar: client version + installer version (rendered by build-installer, Pascal-escaped).
   WizardForm.Caption := '{{ wizardCaption }}';
 
-  // Download page for the movies (shared lib; hidden until prepareToInstall shows it).
+  // Download page for the movies (CncnetCommon; hidden until prepareToInstall shows it).
   CncnetSetupDownloadPage(
     ExpandConstant('{cm:DownloadingFiles}'),
     ExpandConstant('{cm:DownloadingFilesDescription}'));
 
-  // Give the InnoDependencyInstaller dependency page the shared layout (the library's PrepareToInstall then shows it).
+  // Give the InnoDependencyInstaller dependency page the CncnetCommon layout (InnoDependencyInstaller's PrepareToInstall then shows it).
   CncnetSetupDependencyDownloadPage(
     ExpandConstant('{cm:DownloadingFiles}'),
     ExpandConstant('{cm:DownloadingFilesDescription}'));
 
-  // License radio labels: Inno 7 draws the captions in black - replace them with themed labels (shared implementation).
+  // License radio labels: Inno 7 draws the captions in black - replace them with themed labels (CncnetCommon's CncnetThemeLicenseRadios).
   CncnetThemeLicenseRadios();
 end;
 
@@ -403,7 +405,7 @@ begin
   begin
     if not CncnetGotWritePermissions(ExpandConstant('{app}')) then
     begin
-      // Smart UAC: offer the elevated relaunch for this folder; no prompt in silent installs (the abort is logged).
+      // Offer the elevated relaunch for this folder (CncnetWriteDenied); no prompt in silent installs (the abort is logged).
       CncnetWriteDenied(
         ExpandConstant('{app}'),
         ExpandConstant('{cm:WriteDeniedPrompt}'),
@@ -427,7 +429,7 @@ begin
   if (CurPage = wpReady) then
   begin
     ForceDirectories(ExpandConstant('{app}'));
-    // Smart UAC: elevation is only offered here (deps missing in a per-user install), never at startup.
+    // Elevation is only offered here (deps missing in a per-user install), never at startup.
     CncnetWarnMissingDeps(
       PerUserMissingDeps,
       ExpandConstant('{cm:PerUserMissingDeps}'),

@@ -1,7 +1,7 @@
 // CncnetCommon.iss - shared CnCNet installer code (Inno Setup 7).
 // ISPP-included from a [Code] section AFTER libs/ISTheme/ISTheme.iss, so
 // only // (Pascal) comments are allowed here.
-// Provides (all Cncnet-prefixed): admin/Wine/Steam detection, smart-UAC
+// Provides (all Cncnet-prefixed): admin/Wine/Steam detection, elevation
 // relaunch, dependency collection, license-radio theming, the generic
 // download page + queue and the dependency-download page layout.
 // No event handlers: templates keep theirs and call these from them.
@@ -60,7 +60,7 @@ var
   // The template's own download page (movies etc.).
   CncnetDl: TCncnetDl;
   // InnoDependencyInstaller's page, recreated with the progress callback
-  // (only settable at CreateDownloadPage time); the library's
+  // (only settable at CreateDownloadPage time); InnoDependencyInstaller's
   // Dependency_PrepareToInstall reads this global, so the swap applies.
   CncnetDep: TCncnetDl;
   // Download queue (CncnetDlQueueAdd / CncnetDlDownloadAll); sizes in KB (Inno has no TArrayOfInt64), 0 = unknown.
@@ -546,7 +546,7 @@ begin
   end;
 end;
 
-// Dir-page write-permission failure: offers the same smart-UAC relaunch as CncnetWarnMissingDeps.
+// Dir-page write-permission failure: offers the same elevation relaunch as CncnetWarnMissingDeps.
 // No-op in silent installs; when already elevated, only the Denied message is shown.
 procedure CncnetWriteDenied(const AppDir, PromptMessage, DeniedMessage: String);
 begin
@@ -1233,7 +1233,7 @@ begin
   CncnetDlBuildLayout(CncnetDl.Page, Title, Description, CncnetDl);
 end;
 
-// Same layout for the InnoDependencyInstaller dependency page, via CncnetDep; the library reads the
+// Same layout for the InnoDependencyInstaller dependency page, via CncnetDep; InnoDependencyInstaller reads the
 // Dependency_DownloadPage global, so recreating it here is picked up. Requires libs/InnoDependencyInstaller/
 // CodeDependencies.iss included first; call from InitializeWizard (after ISTheme()).
 procedure CncnetSetupDependencyDownloadPage(const Title, Description: String);

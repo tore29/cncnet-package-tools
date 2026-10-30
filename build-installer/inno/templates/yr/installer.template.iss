@@ -10,7 +10,7 @@
 ; Allows adding dependency installers: https://github.com/DomGries/InnoDependencyInstaller
 
 [Code]
-// All library includes live at the top of [Code]; their [Code] sections splice into this one.
+// All #include directives live at the top of the [Code] section; the included files' [Code] sections splice into this one.
 #include "libs/InnoDependencyInstaller/CodeDependencies.iss"
 #include "libs/ISTheme/ISTheme.iss"
 #include "libs/CncnetCommon/CncnetCommon.iss"
@@ -78,7 +78,8 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "runyrdiag"; Description: "Run the diagnostic tool to automatically fix common game launch issues (recommended)"
 
 [InstallDelete]
-; files to delete prior to installation (from preupdateexec/updateexec)
+; files to delete prior to installation; the list is generated from the package's preupdateexec and
+; updateexec files (their Delete and DeleteFolder sections)
 {% for item in installDeleteFiles %}
 Type: filesandordirs; Name: "{app}\{{ item }}"
 {% endfor %}
@@ -145,7 +146,7 @@ Root: HKLM; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\
 Root: HKCU; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers; ValueType: String; ValueName: {app}\gamemd-spawn.exe; ValueData: "HIGHDPIAWARE"
 Root: HKLM; Subkey: Software\Microsoft\Windows NT\CurrentVersion\AppCompatFlags\Layers; ValueType: String; ValueName: {app}\gamemd-spawn.exe; ValueData: "HIGHDPIAWARE"; Check: CncnetIsUserAnAdmin
 
-; Wine: per-app defaults for the game spawn process (the same values YRLauncherUnix.sh writes at runtime).
+; Wine: per-app defaults for the game spawn process (the same values the CnCNet launcher sets at runtime).
 Root: HKCU; Subkey: Software\Wine\AppDefaults\gamemd-spawn.exe; ValueType: string; ValueName: Version; ValueData: win10; Check: CncnetRunsOnWine
 Root: HKCU; Subkey: Software\Wine\AppDefaults\gamemd-spawn.exe\DllOverrides; ValueType: string; ValueName: ddraw; ValueData: native, builtin; Check: CncnetRunsOnWine
 Root: HKCU; Subkey: Software\Wine\AppDefaults\gamemd-spawn.exe\DllOverrides; ValueType: string; ValueName: wsock32; ValueData: native, builtin; Check: CncnetRunsOnWine
@@ -158,7 +159,7 @@ const
   GameRegKeyWestwood = 'Software\Westwood\Red Alert 2';
   GameRegKeyTFD = 'Software\Electronic Arts\EA Games\Command and Conquer The First Decade';
   GameRegKeyOrigin = 'Software\EA Games\Command and Conquer Red Alert II';
-  // Steam library game folders (the shared lookup checks <library root>\steamapps\common\<folder>).
+  // Steam library game folders (CncnetDetectGame checks <library root>\steamapps\common\<folder>).
   // The standalone YR app installs into 'Command & Conquer Red Alert II' (gamemd.exe marks it as YR,
   // so a plain RA2 in the same folder is not a false positive); First Decade uses the nested EA Games path.
   SteamGameFolderStandalone = 'Command & Conquer Red Alert II';
@@ -263,7 +264,7 @@ end;
 
 // ============================================================ Dependencies
 
-// Registers all machine-wide dependencies; the library only keeps the ones that are actually missing.
+// Registers all machine-wide dependencies; InnoDependencyInstaller only keeps the ones that are actually missing.
 procedure RegisterDependencies;
 begin
   // The client tooling is a .NET Framework 4.x app.
@@ -306,7 +307,7 @@ begin
 
   if CncnetIsUserAnAdmin() then
   begin
-    // All-users install: the library downloads and installs everything still missing (Dependency_PrepareToInstall).
+    // All-users install: InnoDependencyInstaller downloads and installs everything still missing (Dependency_PrepareToInstall).
     if GetArrayLength(Dependency_List) > 0 then
       Log('All-users install: installing missing machine-wide dependencies first.');
   end
@@ -347,12 +348,12 @@ begin
   Memo.Font.Color := {{ '{#' }}ISThemeTextBoxForeColor};
   Memo.Color := {{ '{#' }}ISThemeTextBoxBackColor};
 
-  // Give the InnoDependencyInstaller dependency page the shared layout (the library's PrepareToInstall then shows it).
+  // Give the InnoDependencyInstaller dependency page the CncnetCommon layout (InnoDependencyInstaller's PrepareToInstall then shows it).
   CncnetSetupDependencyDownloadPage(
     ExpandConstant('{cm:DownloadingFiles}'),
     ExpandConstant('{cm:DownloadingFilesDescription}'));
 
-  // License radio labels: Inno 7 draws the captions in black - replace them with themed labels (shared implementation).
+  // License radio labels: Inno 7 draws the captions in black - replace them with themed labels (CncnetCommon's CncnetThemeLicenseRadios).
   CncnetThemeLicenseRadios();
 end;
 
@@ -364,7 +365,7 @@ begin
   begin
     if not CncnetGotWritePermissions(ExpandConstant('{app}')) then
     begin
-      // Smart UAC: offer the elevated relaunch for this folder; no prompt in silent installs (the abort is logged).
+      // Offer the elevated relaunch for this folder (CncnetWriteDenied); no prompt in silent installs (the abort is logged).
       CncnetWriteDenied(
         ExpandConstant('{app}'),
         ExpandConstant('{cm:WriteDeniedPrompt}'),
@@ -387,7 +388,7 @@ begin
   if (CurPage = wpReady) then
   begin
     ForceDirectories(ExpandConstant('{app}'));
-    // Smart UAC: elevation is only offered here (deps missing in a per-user install), never at startup;
+    // Elevation is only offered here (deps missing in a per-user install), never at startup;
     // the runyrdiag task selection is carried into the elevated instance.
     CncnetWarnMissingDeps(
       PerUserMissingDeps,
@@ -398,7 +399,7 @@ begin
 end;
 
 // YRDiag.exe's manifest requires elevation (a plain launch from per-user setup fails with error 740);
-// ask first, then start it elevated via the shared smart-UAC helper. Defined before CurStepChanged
+// ask first, then start it elevated via CncnetCommon's CncnetRunElevated. Defined before CurStepChanged
 // (Inno's script Pascal has no forward references).
 procedure CncnetRunYRDiag();
 begin

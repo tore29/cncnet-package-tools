@@ -6,13 +6,13 @@
 ; =============================================================================
 
 #define public Dependency_NoExampleSetup
-; Dependency_CustomExecute hook: run dependency installers from Inno's temp directory (the library's
+; Dependency_CustomExecute hook: run dependency installers from Inno's temp directory (InnoDependencyInstaller's
 ; default is the launch directory, where the DirectX web setup would leave a "$tmp" subfolder behind).
 ; The value must be a quoted preprocessor string (an unquoted identifier is evaluated as a constant reference).
 #define public Dependency_CustomExecute 'Dependency_RunWithTempWorkingDir'
 
 [Code]
-// Dependency_CustomExecute hook implementation; must precede the library's Dependency_Install (order-sensitive Pascal).
+// Dependency_CustomExecute hook implementation; must precede InnoDependencyInstaller's Dependency_Install (order-sensitive Pascal).
 function Dependency_RunWithTempWorkingDir(const FilePath, Parameters: String; var ResultCode: Integer): Boolean;
 begin
   Result := ShellExec('', FilePath, Parameters, ExpandConstant('{tmp}'), SW_SHOWNORMAL, ewWaitUntilTerminated, ResultCode);
@@ -216,7 +216,7 @@ begin
     end;
   end;
 
-  // 2. Steam library folders (shared lookup, both config.vdf locations)
+  // 2. Steam library folders (CncnetDetectGame checks <library root>\steamapps\common\<folder> for each Steam library root)
   SetArrayLength(SteamCommonFolders, 1);
   SteamCommonFolders[0] := SteamGameFolder;
 
@@ -320,7 +320,7 @@ begin
   Result := '{{ extraMovies.file }}';
 end;
 
-// Movie sizes in KB (the profile's values; the shared engine converts to bytes).
+// Movie sizes in KB (the profile's values; CncnetCommon's download page converts to bytes).
 function GetMovieSizeKB(const Index: Integer): Integer;
 begin
   case Index of
@@ -338,7 +338,7 @@ begin
 end;
 
 // "Preparing to install" step: downloads the movie files to the temp dir with a real progress bar
-// (the shared download page); the [Files] section installs them from there.
+// (CncnetCommon's download page); the [Files] section installs them from there.
 // Runs after InnoDependencyInstaller's PrepareToInstall (same-name events run in include order);
 // returning a non-empty string aborts the install.
 function prepareToInstall(var NeedsRestart: Boolean): String;
@@ -387,7 +387,7 @@ begin
        or FileExists(ExpandConstant('{sys}\..\SysWOW64\X3DAudio1_7.dll'));
 end;
 
-// Registers all machine-wide dependencies; the library only keeps the ones that are actually missing.
+// Registers all machine-wide dependencies; InnoDependencyInstaller only keeps the ones that are actually missing.
 procedure RegisterDependencies;
 begin
   // The launcher stub (TiberianSun.exe, CnCNet.LauncherStub) is a .NET Framework 4.x app.
@@ -397,8 +397,9 @@ begin
   Dependency_ForceX86 := true;
   Dependency_AddDotNet80Desktop;
   Dependency_ForceX86 := false;
-  // The legacy XNA renderer needs the XNA 4.0 Refresh Redistributable (X3DAudio + XACT + d3dx9 runtimes).
-  // Registered before the VC++ 2010 redist so the VC++ 2010 SP1 CRT build wins.
+  // The XNA renderer (clientxna.exe) needs the XNA 4.0 Refresh Redistributable (X3DAudio + XACT + d3dx9 runtimes).
+  // Registered before the plain VC++ 2010 redist so the VC++ 2010 SP1 runtime carried by the XNA redist is
+  // what ends up installed (InnoDependencyInstaller installs in registration order).
   // Per-user installs cannot install it - the ready page offers elevation,
   // else the user must install it with an admin account.
   Dependency_AddIfMissing(not IsXNA40Installed(),
@@ -408,12 +409,12 @@ begin
     'https://download.microsoft.com/download/5/3/a/53a804c8-ec78-43cd-a0f0-2fb4d45603d3/xnafx40_redist.msi',
     '2b03c130c4bb5f106b9619bea8150201f7e982709cfe9a0ccbde75ff0a83b27',
     False, False);
-  // The legacy XNA renderer is 32-bit and imports MSVCR100.dll / MSVCP100.dll (VC++ 2010 SP1) - force x86.
-  // (The other renderers are fully managed MonoGame / SharpDX.)
+  // The XNA renderer (clientxna.exe) is 32-bit and imports MSVCR100.dll / MSVCP100.dll (VC++ 2010 SP1) - force x86.
+  // (The client's other renderers are fully managed MonoGame / SharpDX.)
   Dependency_ForceX86 := true;
   Dependency_AddVC2010;
   Dependency_ForceX86 := false;
-  // The XNA renderer also imports d3dx9_*.dll; the library's DirectX helper always installs,
+  // The XNA renderer also imports d3dx9_*.dll; InnoDependencyInstaller's Dependency_AddDirectX always installs,
   // so only register it when no d3dx9 runtime is present.
   if not HasD3DX9Runtime() then
     Dependency_AddDirectX;
@@ -425,7 +426,7 @@ begin
 
   if CncnetIsUserAnAdmin() then
   begin
-    // All-users install: the library downloads and installs everything still missing (Dependency_PrepareToInstall).
+    // All-users install: InnoDependencyInstaller downloads and installs everything still missing (Dependency_PrepareToInstall).
     if GetArrayLength(Dependency_List) > 0 then
       Log('All-users install: installing missing machine-wide dependencies first.');
   end
@@ -451,12 +452,12 @@ begin
   // Wizard title bar: client version + installer version (rendered by build-installer, Pascal-escaped).
   WizardForm.Caption := '{{ wizardCaption }}';
 
-  // Download page for the movies (shared lib; hidden until prepareToInstall shows it).
+  // Download page for the movies (CncnetCommon; hidden until prepareToInstall shows it).
   CncnetSetupDownloadPage(
     ExpandConstant('{cm:DownloadingFiles}'),
     ExpandConstant('{cm:DownloadingFilesDescription}'));
 
-  // Give the InnoDependencyInstaller dependency page the shared layout (the library's PrepareToInstall then shows it).
+  // Give the InnoDependencyInstaller dependency page the CncnetCommon layout (InnoDependencyInstaller's PrepareToInstall then shows it).
   CncnetSetupDependencyDownloadPage(
     ExpandConstant('{cm:DownloadingFiles}'),
     ExpandConstant('{cm:DownloadingFilesDescription}'));
@@ -473,7 +474,7 @@ begin
   begin
     if not CncnetGotWritePermissions(ExpandConstant('{app}')) then
     begin
-      // Smart UAC: offer the elevated relaunch for this folder; no prompt in silent installs (the abort is logged).
+      // Offer the elevated relaunch for this folder (CncnetWriteDenied); no prompt in silent installs (the abort is logged).
       CncnetWriteDenied(
         ExpandConstant('{app}'),
         ExpandConstant('{cm:WriteDeniedPrompt}'),
@@ -498,7 +499,7 @@ begin
   begin
     ForceDirectories(ExpandConstant('{app}'));
     CreateDir(ExpandConstant('{app}\MIX'));
-    // Smart UAC: elevation is only offered here (deps missing in a per-user install), never at startup.
+    // Elevation is only offered here (deps missing in a per-user install), never at startup.
     CncnetWarnMissingDeps(
       PerUserMissingDeps,
       ExpandConstant('{cm:PerUserMissingDeps}'),
