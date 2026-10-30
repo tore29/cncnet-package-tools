@@ -2,7 +2,7 @@ CnCNet Tiberian Sun Client Beta
 
 This is a unofficial fan made program, CnCNet is not affiliated with Electronic Arts. Trademarks belong to their respective owners.
 
-Command & Conquer™ and Command & Conquer: Tiberian Sun™ are registered trademarks of Electronic Arts, all rights reserved.
+Command & Conquerâ„¢ and Command & Conquer: Tiberian Sunâ„¢ are registered trademarks of Electronic Arts, all rights reserved.
 http://www.commandandconquer.com
 
 To be able to continue you must agree to the following:
@@ -12,7 +12,13 @@ CnCNet Terms & Conditions: http://cncnet.org/terms-and-conditions
 GameSurge Terms of Service: http://gamesurge.net/tos/
 
 The following third-party material is used, please visit the respective websites for all information:
-Inno Setup 7.0.2 by Jordan Russell https://jrsoftware.org/
+- Inno Setup 7.0.2 by Jordan Russell https://jrsoftware.org/
+
+- Original IrcD.Net code by Thomas Bruderer - License: http://github.com/FreeApophis/ircddotnet/blob/master/LICENSE
+
+- DotNetZip library - https://dotnetzip.codeplex.com/
+
+- OpenTS by OenTS developers - https://github.com/OpenTS-Developers/OpenTS
 
 For more information and credits visit the GitHub Repo
 https://github.com/CnCNet/cncnet-ts-client-package

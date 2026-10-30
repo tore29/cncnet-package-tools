@@ -13,7 +13,7 @@ The following third-party material is included, please visit the respective webs
 -
 Ares by Ares-developers - https://ares.strategy-x.com/
 -
-cnc-ddraw by FunkyFr3sh - MIT License https://github.com/FunkyFr3sh/cnc-ddraw
+cnc-ddraw by FunkyFr3sh, hifi et. al. - MIT License https://github.com/FunkyFr3sh/cnc-ddraw
 -
 DotNetZip library - https://dotnetzip.codeplex.com/
 -
