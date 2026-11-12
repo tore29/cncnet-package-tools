@@ -1,0 +1,56 @@
+{
+    "_comment": "TD is not onboarded yet. This is a minimal stub so the tooling can parse a TD profile; icon/license/output/appId are filled in when the TD package is onboarded.",
+    "id": "td",
+    "app": {
+        "name": "CnCNet Tiberian Dawn",
+        "publisher": "cncnet.org",
+        "publisherUrl": "https://cncnet.org",
+        "supportUrl": "https://cncnet.org",
+        "updatesUrl": "https://cncnet.org"
+    },
+    "version": {
+        "file": "version",
+        "section": "DTA",
+        "key": "Version",
+        "missing": "throw"
+    },
+    "packageKind": "standalone",
+    "packageDir": "../package",
+    "resources": {
+        "icon": "cncnet5.ico",
+        "license": null
+    },
+    "output": {
+        "baseFilename": null,
+        "dir": ".."
+    },
+    "excludedFiles": [
+        "preupdateexec",
+        "updateexec",
+        "versionconfig.ini"
+    ],
+    "requiredFiles": {
+        "package": [],
+        "inno": []
+    },
+    "installDelete": {
+        "parser": "manual",
+        "sections": [
+            "Delete",
+            "DeleteFolder",
+            "DeleteFolderIfEmpty",
+            "ForceDeleteFolder"
+        ],
+        "sentinel": null,
+        "dedupe": true,
+        "sort": false,
+        "filterExisting": "none"
+    },
+    "mixes": {
+        "inDir": "../game-assets",
+        "outDir": ".",
+        "nameFormat": "rol1",
+        "xccGameId": 0,
+        "buildInService": false
+    }
+}

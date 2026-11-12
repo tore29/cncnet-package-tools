@@ -2,6 +2,8 @@ import { parseArgs } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { loadGameProfile, resolveGamePackageDir } from 'cncnet-core/service/game-profile.service';
+
 import { MpMapsFileService } from 'mpmaps-updater/class/mp-maps-file.service';
 interface IMapKeyPairing {
     mapKey: string;
@@ -23,6 +25,10 @@ export class MapNameCaseFixService {
     public static run(): void {
         const { values } = parseArgs({
             options: {
+                game: {
+                    type: 'string',
+                    short: 'g',
+                },
                 workingDir: {
                     type: 'string',
                     short: 'w',
@@ -30,13 +36,20 @@ export class MapNameCaseFixService {
             },
         });
 
-        if (!values.workingDir) {
-            console.error('Missing required argument: --workingDir');
+        if (!values.game && !values.workingDir) {
+            console.error('Missing required argument: --game or --workingDir');
+            console.error('Example: npm run map-name-case-fix -- --game yr');
             console.error('Example: npm run map-name-case-fix -- --workingDir /path/to/package');
             process.exit(1);
         }
 
-        new MapNameCaseFixService(values.workingDir).run();
+        // --game: workingDir comes from the game profile's packageDir.
+        // An explicit --workingDir still wins.
+        const workingDir = values.game
+            ? resolveGamePackageDir(loadGameProfile(values.game), values.workingDir)
+            : path.resolve(values.workingDir!);
+
+        new MapNameCaseFixService(workingDir).run();
     }
 
     private async run(): Promise<void> {

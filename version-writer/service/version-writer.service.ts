@@ -3,6 +3,8 @@ import * as childProcess from 'child_process';
 import * as fsPromises from 'fs/promises';
 import * as path from 'path';
 
+import { loadGameProfile, resolveGamePackageDir } from 'cncnet-core/service/game-profile.service';
+
 import { createConstants } from 'version-writer/constants';
 
 interface ICommandOptions {
@@ -21,6 +23,10 @@ export class VersionWriterService {
     public static async run(): Promise<void> {
         const { values } = parseArgs({
             options: {
+                game: {
+                    type: 'string',
+                    short: 'g',
+                },
                 workingDir: {
                     type: 'string',
                     short: 'w',
@@ -28,13 +34,20 @@ export class VersionWriterService {
             },
         });
 
-        if (!values.workingDir) {
-            console.error('Missing required argument: --workingDir');
+        if (!values.game && !values.workingDir) {
+            console.error('Missing required argument: --game or --workingDir');
+            console.error('Example: npm run version-writer -- --game yr');
             console.error('Example: npm run version-writer -- --workingDir /path/to/package');
             process.exit(1);
         }
 
-        await new VersionWriterService(values.workingDir).run();
+        // --game: workingDir comes from the game profile's packageDir.
+        // An explicit --workingDir still wins.
+        const workingDir = values.game
+            ? resolveGamePackageDir(loadGameProfile(values.game), values.workingDir)
+            : path.resolve(values.workingDir!);
+
+        await new VersionWriterService(workingDir).run();
     }
 
     private async run(): Promise<void> {

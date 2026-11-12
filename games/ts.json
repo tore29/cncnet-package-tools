@@ -1,0 +1,136 @@
+{
+    "id": "ts",
+    "app": {
+        "name": "CnCNet Tiberian Sun",
+        "appId": "A1BB49D0-F44E-48F5-966E-CE2DE5DFAC43",
+        "description": "Modern way of playing Tiberian Sun",
+        "publisher": "cncnet.org",
+        "publisherUrl": "https://cncnet.org/",
+        "supportUrl": "https://cncnet.org/forums/forum/cncnet-tiberian-sun/",
+        "updatesUrl": "https://cncnet.org/forums/forum/cncnet-tiberian-sun/"
+    },
+    "version": {
+        "file": "version",
+        "section": "DTA",
+        "key": "Version",
+        "missing": "throw"
+    },
+    "packageKind": "standalone",
+    "packageDir": "..",
+    "resources": {
+        "icon": "tsicon.ico",
+        "license": "License-TiberianSun.txt"
+    },
+    "output": {
+        "baseFilename": "CnCNet5_TS_Installer",
+        "dir": "installer-output"
+    },
+    "excludedFiles": [
+        ".git*",
+        ".git\\*",
+        ".github\\*",
+        "AGENTS.md",
+        "MEMORY.md",
+        "README.md",
+        "GitVersion.yml",
+        "Game.pdb",
+        "BuildMixes.bat",
+        "Tools\\*",
+        "MixSource\\*",
+        "cache\\*",
+        "QM\\*",
+        "Client\\*",
+        "VersionWriter-CopiedFiles\\*",
+        "MainMenuTheme.bak",
+        "preupdateexec",
+        "updateexec",
+        "versionconfig.ini",
+        "version_u",
+        "version_cc",
+        "ddraw.dll",
+        "ddraw.ini",
+        "sun.ini",
+        "SUN.ini",
+        "KEYBOARD.INI",
+        "spawn.ini",
+        "spawnmap.ini",
+        "spawnSG.ini",
+        "stats.dmp",
+        "ts.log",
+        "TS.log",
+        "except.txt",
+        "mpstats.log",
+        "mpstats.txt",
+        "sync*.txt",
+        "_gsdata_",
+        "buffer",
+        "HALLFAME.DAT",
+        "SAVEGAME.NET",
+        "Saved Games\\*.SAV",
+        "tools\\*",
+        "installer-output\\*",
+        ".vscode\\*"
+    ],
+    "requiredFiles": {
+        "package": [
+            "version",
+            "preupdateexec",
+            "updateexec",
+            "versionconfig.ini"
+        ],
+        "inno": [
+            "libs/InnoDependencyInstaller/CodeDependencies.iss",
+            "libs/ISTheme/ISTheme.iss",
+            "libs/CncnetCommon/CncnetCommon.iss",
+            "Resources/tsicon.ico",
+            "Resources/License-TiberianSun.txt",
+            "Resources/ts/TiberianSunWizardFormBackground.bmp",
+            "Resources/ts/TiberianSunInnerPageBackground.bmp",
+            "Resources/ts/TiberianSunPageBackground.bmp",
+            "Resources/WritePermissionTestFile.txt",
+            "bin/ISCC.exe"
+        ]
+    },
+    "installDelete": {
+        "parser": "manual",
+        "sections": [
+            "Delete",
+            "DeleteFolder",
+            "DeleteFolderIfEmpty",
+            "ForceDeleteFolder"
+        ],
+        "sentinel": null,
+        "dedupe": true,
+        "sort": false,
+        "filterExisting": "none"
+    },
+    "movies": [
+        {
+            "file": "Movies01.mix",
+            "url": "https://downloads.cncnet.org/updates/games/ts/updates/Components/Movies01.mix",
+            "sizeKB": 484415
+        },
+        {
+            "file": "Movies02.mix",
+            "url": "https://downloads.cncnet.org/updates/games/ts/updates/Components/Movies02.mix",
+            "sizeKB": 479157
+        },
+        {
+            "file": "Movies03.mix",
+            "url": "https://downloads.cncnet.org/updates/games/ts/updates/Components/Movies03.mix",
+            "sizeKB": 479691
+        }
+    ],
+    "extraMovies": {
+        "file": "Expand00.7z",
+        "url": "https://downloads.cncnet.org/tsclient/Expand00.7z",
+        "sizeKB": 52964
+    },
+    "mixes": {
+        "inDir": "MixSource",
+        "outDir": "MIX",
+        "nameFormat": "padded-crc32",
+        "xccGameId": 2,
+        "buildInService": false
+    }
+}

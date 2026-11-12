@@ -1,0 +1,75 @@
+{
+    "id": "ra1",
+    "app": {
+        "name": "CnCNet Red Alert",
+        "appId": "73F3D3B5-4AC4-4D01-A65C-0A4B4D8723B5",
+        "description": "Modern way of playing Red Alert",
+        "publisher": "cncnet.org",
+        "publisherUrl": "https://cncnet.org",
+        "supportUrl": "https://cncnet.org",
+        "updatesUrl": "https://cncnet.org"
+    },
+    "version": {
+        "file": "version",
+        "section": null,
+        "key": "Version",
+        "missing": "throw",
+        "trim": true
+    },
+    "packageKind": "standalone",
+    "packageDir": "../package",
+    "resources": {
+        "icon": "cncnet5.ico",
+        "license": "License-RedAlert.txt"
+    },
+    "output": {
+        "baseFilename": "CnCNet5_RA_Installer",
+        "dir": ".."
+    },
+    "excludedFiles": [
+        "preupdateexec",
+        "updateexec",
+        "versionconfig.ini",
+        "REDALERT.ini"
+    ],
+    "requiredFiles": {
+        "package": [],
+        "inno": [
+            "libs/InnoDependencyInstaller/CodeDependencies.iss",
+            "libs/ISTheme/ISTheme.iss",
+            "libs/CncnetCommon/CncnetCommon.iss",
+            "Resources/cncnet5.ico",
+            "Resources/License-RedAlert.txt",
+            "Resources/ra1/RedAlertWizardFormBackground.bmp",
+            "Resources/ra1/RedAlertInnerPageBackground.bmp",
+            "Resources/ra1/RedAlertPageBackground.bmp",
+            "Resources/WritePermissionTestFile.txt",
+            "bin/ISCC.exe"
+        ]
+    },
+    "installDelete": {
+        "parser": "js-ini",
+        "sections": [
+            "Delete",
+            "DeleteFolder"
+        ],
+        "sentinel": "do_not_remove_this_line",
+        "dedupe": true,
+        "sort": true,
+        "filterExisting": "keep-missing"
+    },
+    "movies": [
+        {
+            "file": "RA1Movies_PLACEHOLDER.mix",
+            "url": "https://downloads.cncnet.org/PLACEHOLDER/RA1Movies_PLACEHOLDER.mix",
+            "sizeKB": 0
+        }
+    ],
+    "mixes": {
+        "inDir": "../game-assets",
+        "outDir": ".",
+        "nameFormat": "rol1",
+        "xccGameId": 1,
+        "buildInService": false
+    }
+}
